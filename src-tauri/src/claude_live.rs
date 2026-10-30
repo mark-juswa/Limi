@@ -21,7 +21,9 @@ const TIMEOUT: Duration = Duration::from_secs(25);
 
 #[derive(Debug, PartialEq)]
 pub enum Fetch {
-    Ok { windows: Vec<UsageWindow>, plan: Option<String> },
+    /// `fresh` is false when Claude Code answered from its cached copy because
+    /// the usage service refused the request (it rate-limits frequent checks).
+    Ok { windows: Vec<UsageWindow>, plan: Option<String>, fresh: bool },
     /// Signed in without a Pro/Max plan (e.g. API key): no plan limits exist.
     NoLimits,
     SignedOut,
@@ -103,6 +105,9 @@ pub fn parse(resp: &Value) -> Fetch {
         return Fetch::Failed("Claude Code didn't return plan limits.".into());
     };
 
+    // A fresh answer carries the `limits` list; Claude Code drops it when it
+    // falls back to its cached copy.
+    let fresh = rl.get("limits").is_some_and(Value::is_array);
     let mut windows = Vec::new();
     if let Some(limits) = rl.get("limits").and_then(Value::as_array) {
         for l in limits {
@@ -142,7 +147,18 @@ pub fn parse(resp: &Value) -> Fetch {
     if windows.is_empty() {
         return Fetch::NoLimits;
     }
-    Fetch::Ok { windows, plan }
+    Fetch::Ok { windows, plan, fresh }
+}
+
+/// When Claude Code last fetched the usage it caches in `.claude.json`
+/// (epoch ms). Only that timestamp is read.
+pub fn cached_at() -> Option<i64> {
+    let file = match std::env::var_os("CLAUDE_CONFIG_DIR") {
+        Some(d) if !d.is_empty() => PathBuf::from(d).join(".claude.json"),
+        _ => dirs::home_dir()?.join(".claude.json"),
+    };
+    let v: Value = serde_json::from_slice(&std::fs::read(file).ok()?).ok()?;
+    v.pointer("/cachedUsageUtilization/fetchedAtMs")?.as_i64()
 }
 
 /// Ask Claude Code for current plan usage.
@@ -231,7 +247,8 @@ mod tests {
     fn parses_real_get_usage_response() {
         // Captured from Claude Code 2.1.150 (Pro plan), trimmed.
         let v: Value = serde_json::from_str(r#"{"subscription_type":"pro","rate_limits_available":true,"rate_limits":{"five_hour":{"utilization":70,"resets_at":"2026-10-30T15:29:59.621830+00:00"},"seven_day":{"utilization":23,"resets_at":"2026-11-05T17:59:59.621849+00:00"},"seven_day_opus":null,"limits":[{"kind":"session","group":"session","percent":70,"severity":"normal","resets_at":"2026-10-30T15:29:59.621830+00:00","scope":null,"is_active":true},{"kind":"weekly_all","group":"weekly","percent":23,"severity":"normal","resets_at":"2026-11-05T17:59:59.621849+00:00","scope":null,"is_active":false}]},"behaviors":null}"#).unwrap();
-        let Fetch::Ok { windows, plan } = parse(&v) else { panic!("expected numbers") };
+        let Fetch::Ok { windows, plan, fresh } = parse(&v) else { panic!("expected numbers") };
+        assert!(fresh);
         assert_eq!(plan.as_deref(), Some("Pro"));
         assert_eq!(windows.len(), 2);
         assert_eq!((windows[0].id.as_str(), windows[0].used_percent), ("session", 70.0));
@@ -251,8 +268,10 @@ mod tests {
 
     #[test]
     fn falls_back_to_named_windows_and_handles_no_plan() {
+        // Cached answer (Claude Code was rate-limited): no `limits` list.
         let v = json!({ "rate_limits": { "five_hour": { "utilization": 12, "resets_at": null } } });
-        let Fetch::Ok { windows, .. } = parse(&v) else { panic!() };
+        let Fetch::Ok { windows, fresh, .. } = parse(&v) else { panic!() };
+        assert!(!fresh);
         assert_eq!((windows[0].used_percent, windows[0].resets_at), (12.0, None));
         assert_eq!(parse(&json!({ "rate_limits_available": false })), Fetch::NoLimits);
     }

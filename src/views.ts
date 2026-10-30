@@ -238,8 +238,8 @@ export function settingsHtml(state: AppState): string {
       ${toggle("autostart", state.autostart, "Start with Windows")}
       <div class="row"><span class="row-text"><span>Screen edge</span></span>
       ${segmented("edge", s.edge, [["left", "Left"], ["right", "Right"]])}</div>
-      <div class="row"><span class="row-text"><span>Check every</span><small>Also checks right after you use Claude or Codex</small></span>
-      ${segmented("pollSeconds", s.pollSeconds, [[30, "30s"], [60, "1m"], [300, "5m"]])}</div>
+      <div class="row"><span class="row-text"><span>Check every</span><small>Codex; Claude every 5 min (its limit). Both also check after you use them.</small></span>
+      ${segmented("pollSeconds", s.pollSeconds, [[60, "1m"], [120, "2m"], [300, "5m"]])}</div>
     </div>
 
     <h4>About</h4>
@@ -284,9 +284,18 @@ function windowFor(usage: Usage, key: string) {
 /** Update numbers, gauges and times in place so changes animate. */
 export function paint(root: HTMLElement, state: AppState) {
   const usage = state.usage;
+  // A window whose reset time passed: if nothing was used since (per the local
+  // logs), the new window is empty; otherwise wait for fresh numbers.
+  const emptySince = (key: string) => {
+    const { p, w } = windowFor(usage, key);
+    if (!p || !w || !isReset(w) || w.resetsAt === null) return false;
+    const last = usage.tokens?.[p.id]?.lastActivityAt ?? null;
+    return last === null || last < w.resetsAt * 1000;
+  };
   const shown = (key: string) => {
     const { w } = windowFor(usage, key);
-    if (!w || isReset(w)) return null;
+    if (!w) return null;
+    if (isReset(w)) return emptySince(key) ? 0 : null;
     return clampPct(w.usedPercent);
   };
 
@@ -320,8 +329,11 @@ export function paint(root: HTMLElement, state: AppState) {
   root.querySelectorAll<HTMLElement>("[data-left]").forEach((el) => {
     const { w } = windowFor(usage, el.dataset.left!);
     if (!w) return;
-    if (isReset(w)) el.textContent = `Reset at ${resetClock(w.resetsAt)}`;
-    else if (w.resetsAt === null) el.textContent = "Reset time not reported";
+    if (isReset(w)) {
+      el.textContent = emptySince(el.dataset.left!)
+        ? "New session starts with your next message"
+        : `Reset at ${resetClock(w.resetsAt)}`;
+    } else if (w.resetsAt === null) el.textContent = "Reset time not reported";
     else el.textContent = `in ${countdown(w.resetsAt)} · ${resetClock(w.resetsAt)}`;
   });
   root.querySelectorAll<HTMLElement>("[data-reset-line]").forEach((el) => {
@@ -340,7 +352,11 @@ export function paint(root: HTMLElement, state: AppState) {
   });
   root.querySelectorAll<HTMLElement>("[data-note]").forEach((el) => {
     const p = usage[el.dataset.note as Pid];
-    const text = p.windows.some(isReset) ? "A limit just reset. Fetching fresh numbers…" : "";
+    const stale = p.windows.filter(isReset).some((w) => {
+      const last = usage.tokens?.[p.id]?.lastActivityAt ?? null;
+      return last !== null && w.resetsAt !== null && last >= w.resetsAt * 1000;
+    });
+    const text = stale ? "A limit just reset. Fetching fresh numbers…" : "";
     el.hidden = !text;
     el.textContent = text;
   });
@@ -349,7 +365,9 @@ export function paint(root: HTMLElement, state: AppState) {
     let text = "";
     let live = false;
     if (hasNumbers(p)) {
-      const fresh = p.capturedAt !== null && Date.now() - p.capturedAt < state.settings.pollSeconds * 3000;
+      // Claude is checked every 5 min at most (its service rate-limits checks).
+      const every = p.id === "claude" ? Math.max(state.settings.pollSeconds, 300) : state.settings.pollSeconds;
+      const fresh = p.capturedAt !== null && Date.now() - p.capturedAt < every * 2000;
       live = p.live && fresh && p.status === "ok";
       text = live ? "Live" : `Updated ${ago(p.capturedAt)}`;
     }

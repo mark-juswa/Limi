@@ -55,8 +55,8 @@ Limi only shows numbers the providers report. It never estimates usage.
 
 | Service | Source | Freshness |
 |---|---|---|
-| Claude | Claude Code's own `get_usage` request, the interface it offers for usage meters. Limi starts Claude Code headless, asks for usage, and exits. No prompt is sent, so checks don't count against your limits. | Every 30 s to 5 min (your choice), and right after any Claude Code activity. |
-| Codex | `codex app-server` and its `account/rateLimits/read` request. | Same interval, and right after any Codex activity. |
+| Claude | Claude Code's own `get_usage` request, the interface it offers for usage meters. Limi starts Claude Code headless, asks for usage, and exits. No prompt is sent, so checks don't count against your limits. | Every 5 minutes, and a few minutes after Claude Code activity. Claude's usage service rate-limits frequent checks; when it refuses one, Claude Code returns its cached copy and Limi shows how old it is instead of calling it live. |
+| Codex | `codex app-server` and its `account/rateLimits/read` request. | Every 1 to 5 minutes (your choice), and right after any Codex activity. |
 
 Both match the usage screens in the Claude and Codex apps, including use from claude.ai and other devices, because the numbers come from your account, not from this PC.
 

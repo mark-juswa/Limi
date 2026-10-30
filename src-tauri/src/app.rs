@@ -24,8 +24,12 @@ use crate::window::{self, HitRect, LayoutInfo};
 
 /// How often the status-line record file is re-read.
 const RECORD_POLL: Duration = Duration::from_secs(3);
-/// Minimum gap between two Claude Code usage checks.
-const CLAUDE_MIN_GAP: Duration = Duration::from_secs(10);
+/// Claude's usage service rate-limits frequent checks (Claude Code then
+/// serves a cached copy and waits 5 minutes), so Claude is checked at most
+/// this often on schedule...
+const CLAUDE_INTERVAL: Duration = Duration::from_secs(300);
+/// ...and at most this often when new Claude activity asks for a refresh.
+const CLAUDE_MIN_GAP: Duration = Duration::from_secs(180);
 const TOKEN_SCAN: Duration = Duration::from_secs(15);
 
 pub struct AppState {
@@ -205,13 +209,29 @@ fn refresh_claude(app: &AppHandle) {
 fn live_snapshot(fetch: Fetch, previous: Option<ProviderSnapshot>) -> ProviderSnapshot {
     let base = ProviderSnapshot::new("claude", "Claude", claude_live::SOURCE, true);
     match fetch {
-        Fetch::Ok { windows, plan } => ProviderSnapshot {
+        Fetch::Ok { windows, plan, fresh: true } => ProviderSnapshot {
             status: Status::Ok,
             windows,
             plan,
             captured_at: Some(paths::now_ms()),
             ..base
         },
+        // Claude Code answered from its cache: keep a newer reading if we have
+        // one, and otherwise show the cache with its real age.
+        Fetch::Ok { windows, plan, fresh: false } => {
+            let cached = claude_live::cached_at();
+            match previous.filter(|p| p.status == Status::Ok && p.captured_at >= cached) {
+                Some(p) => p,
+                None => ProviderSnapshot {
+                    status: Status::Ok,
+                    windows,
+                    plan,
+                    captured_at: cached,
+                    live: false,
+                    ..base
+                },
+            }
+        }
         Fetch::NoLimits => base.with_status(
             Status::NoLimits,
             "Claude Code is signed in without a Pro or Max plan, so there are no plan limits to show.".to_string(),
@@ -238,11 +258,17 @@ fn spawn_claude_live(app: AppHandle) -> UnboundedSender<Msg> {
     tauri::async_runtime::spawn(async move {
         loop {
             let s = settings(&app);
+            let mut gap = CLAUDE_MIN_GAP;
             if s.claude_enabled {
                 let snap = match claude_live::resolve(s.claude_path.as_deref()) {
                     Some(exe) => {
                         let previous = state(&app).claude_live.lock().unwrap().clone();
-                        live_snapshot(claude_live::fetch(&exe).await, previous)
+                        let fetch = claude_live::fetch(&exe).await;
+                        if matches!(fetch, Fetch::Ok { fresh: false, .. }) {
+                            // Refused: give the service its full cool-down.
+                            gap = CLAUDE_INTERVAL;
+                        }
+                        live_snapshot(fetch, previous)
                     }
                     None => ProviderSnapshot::new("claude", "Claude", claude_live::SOURCE, true).with_status(
                         Status::NotInstalled,
@@ -252,7 +278,7 @@ fn spawn_claude_live(app: AppHandle) -> UnboundedSender<Msg> {
                 *state(&app).claude_live.lock().unwrap() = Some(snap);
             }
             refresh_claude(&app);
-            tokio::time::sleep(CLAUDE_MIN_GAP).await;
+            tokio::time::sleep(gap).await;
             // Requests that arrived during the gap are covered by the next check.
             let mut pending = false;
             while rx.try_recv().is_ok() {
@@ -261,7 +287,7 @@ fn spawn_claude_live(app: AppHandle) -> UnboundedSender<Msg> {
             if pending {
                 continue;
             }
-            let wait = Duration::from_secs(s.poll_seconds).saturating_sub(CLAUDE_MIN_GAP);
+            let wait = Duration::from_secs(s.poll_seconds).max(CLAUDE_INTERVAL).saturating_sub(gap);
             tokio::select! {
                 m = rx.recv() => if m.is_none() { return },
                 _ = tokio::time::sleep(wait) => {}
