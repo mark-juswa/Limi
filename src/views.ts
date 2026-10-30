@@ -1,0 +1,364 @@
+import {
+  ago,
+  clampPct,
+  clockShort,
+  compactTokens,
+  countdown,
+  escapeHtml,
+  isReset,
+  level,
+  resetClock,
+  richText,
+  sessionWindow,
+  weeklyWindow,
+} from "./format";
+import type { AppState, Provider, Settings, TokenTotals, Usage } from "./types";
+
+type Pid = "claude" | "codex";
+
+// ------------------------------------------------------------------ icons
+
+export const icons = {
+  claude: `<svg viewBox="0 0 24 24" aria-hidden="true"><g stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 3.5v17"/><path d="M3.5 12h17"/><path d="M6 6l12 12"/><path d="M18 6L6 18"/></g></svg>`,
+  codex: `<svg viewBox="0 0 24 24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8l4 4-4 4"/><path d="M12.5 16.5H18"/></g></svg>`,
+  refresh: `<svg viewBox="0 0 24 24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></g></svg>`,
+  gear: `<svg viewBox="0 0 24 24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></g></svg>`,
+  collapse: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+  back: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6l-6 6 6 6" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+  alert: `<svg viewBox="0 0 24 24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 7.5v5.5"/><path d="M12 16.5v.01"/></g></svg>`,
+  plug: `<svg viewBox="0 0 24 24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3v5M15 3v5M6 8h12v3a6 6 0 0 1-12 0z"/><path d="M12 17v4"/></g></svg>`,
+  clock: `<svg viewBox="0 0 24 24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l2.5 2"/></g></svg>`,
+  sun: `<svg viewBox="0 0 24 24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4" fill="currentColor"/><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.3 5.3l1.6 1.6M17.1 17.1l1.6 1.6M5.3 18.7l1.6-1.6M17.1 6.9l1.6-1.6"/></g></svg>`,
+  moon: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z" fill="currentColor"/></svg>`,
+  auto: `<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 4a8 8 0 0 1 0 16z" fill="currentColor"/></svg>`,
+};
+
+// ------------------------------------------------------------------ gauges
+
+/** 300° arc, gap at the bottom. */
+function arc(r: number): string {
+  const rad = (deg: number) => (deg * Math.PI) / 180;
+  const p = (deg: number) => `${(50 + r * Math.cos(rad(deg))).toFixed(2)} ${(50 + r * Math.sin(rad(deg))).toFixed(2)}`;
+  return `M ${p(120)} A ${r} ${r} 0 1 1 ${p(60)}`;
+}
+
+/** Duo gauge: thick ink progress over a light remainder. */
+function gauge(key: string, r: number, w: number): string {
+  const d = arc(r);
+  return `<svg class="ring-svg" viewBox="0 0 100 100" aria-hidden="true">
+    <path class="track" d="${d}" stroke-width="${w}"/>
+    <path class="prog" data-ring="${key}" d="${d}" stroke-width="${w}" pathLength="100"/>
+  </svg>`;
+}
+
+export function visibleProviders(state: AppState): Provider[] {
+  const { claude, codex } = state.usage;
+  return [claude, codex].filter((p) => p.status !== "disabled");
+}
+
+const hasNumbers = (p: Provider) => (p.status === "ok" || p.status === "error") && p.windows.length > 0;
+
+// ------------------------------------------------------------------ rail
+
+const railWord: Partial<Record<Provider["status"], string>> = {
+  waiting: "Waiting",
+  not_installed: "Missing",
+  signed_out: "Sign in",
+  no_limits: "No limit",
+  error: "Error",
+};
+
+function railItem(p: Provider): string {
+  const key = `${p.id}:session`;
+  if (hasNumbers(p)) {
+    return `<div class="rail-item" data-provider="${p.id}" data-level-of="${p.id}">
+      <div class="ring">${gauge(key, 41, 11)}<b class="num display" data-pct="${key}">0</b></div>
+      <div class="clock display" data-clock="${key}">—</div>
+      <div class="pglyph">${icons[p.id]}</div>
+      <div class="dots" data-dots="${p.id}:weekly"><i></i><i></i><i></i><i></i></div>
+    </div>`;
+  }
+  const glyph =
+    p.status === "waiting" ? icons.clock : icons.alert;
+  const warn = p.status === "waiting" ? "" : " warn";
+  return `<div class="rail-item" data-provider="${p.id}">
+    <div class="ring">${gauge(key, 41, 11)}<span class="glyph${warn}">${glyph}</span></div>
+    <div class="word">${railWord[p.status] ?? ""}</div>
+    <div class="pglyph">${icons[p.id]}</div>
+  </div>`;
+}
+
+export function railHtml(state: AppState): string {
+  const providers = visibleProviders(state);
+  const items = providers.length
+    ? providers.map(railItem).join("")
+    : `<div class="rail-item"><div class="ring">${gauge("none", 41, 11)}<span class="glyph">${icons.gear}</span></div><div class="word">Setup</div></div>`;
+  return `<span class="lens prism" aria-hidden="true"></span>${items}`;
+}
+
+// ------------------------------------------------------------------ panel
+
+function tokenTitle(t: TokenTotals): string {
+  const f = (n: number) => n.toLocaleString();
+  return `${f(t.requests)} requests · ${f(t.input)} input · ${f(t.output)} output · ${f(t.cacheRead)} cache read · ${f(t.cacheWrite)} cache write`;
+}
+
+function tokensHtml(pid: Pid): string {
+  return `<div class="tokens">
+    <div class="tok" data-tok="${pid}:session"><small>Session tokens</small><b class="display">—</b></div>
+    <div class="tok" data-tok="${pid}:weekly"><small>Week tokens</small><b class="display">—</b></div>
+  </div>`;
+}
+
+const statusCopy: Record<string, { title: string; action?: { id: string; label: string } }> = {
+  waiting: { title: "Checking usage…" },
+  not_installed: { title: "Not found", action: { id: "refresh", label: "Check again" } },
+  signed_out: { title: "Not signed in", action: { id: "refresh", label: "Check again" } },
+  no_limits: { title: "No plan limits" },
+  error: { title: "Couldn't load usage", action: { id: "refresh", label: "Try again" } },
+};
+
+function cardHtml(p: Provider, i: number): string {
+  const head = `<header class="card-head">
+      <span class="pglyph">${icons[p.id]}</span>
+      <span class="pname">${escapeHtml(p.name)}</span>
+      ${p.plan ? `<span class="chip">${escapeHtml(p.plan)}</span>` : ""}
+      <span class="fresh" data-fresh="${p.id}"></span>
+    </header>`;
+
+  if (hasNumbers(p)) {
+    const s = sessionWindow(p);
+    const w = weeklyWindow(p);
+    const error = p.status === "error" && p.message ? `<p class="note warn">${richText(p.message)}</p>` : "";
+    return `<section class="card well" data-provider="${p.id}" style="--i:${i}">
+      ${head}
+      <div class="card-main">
+        <div class="big-ring">${gauge(`${p.id}:session`, 42, 10)}
+          <div class="big-num"><b class="display" data-pct="${p.id}:session">0</b><small>%</small></div>
+        </div>
+        <div>
+          <div class="eyebrow">${escapeHtml(s?.label ?? "Session")} resets</div>
+          <div class="big-clock display" data-clock="${p.id}:session">—</div>
+          <div class="sub" data-left="${p.id}:session"></div>
+        </div>
+      </div>
+      ${
+        w
+          ? `<div class="weekly">
+        <div class="weekly-top"><span class="eyebrow">${escapeHtml(w.label)}</span><b class="display"><span data-pct="${p.id}:weekly">0</span>%</b></div>
+        <div class="bar"><i data-bar="${p.id}:weekly"></i></div>
+        <div class="sub" data-reset-line="${p.id}:weekly"></div>
+      </div>`
+          : ""
+      }
+      ${tokensHtml(p.id)}
+      <p class="note" data-note="${p.id}" hidden></p>
+      ${error}
+    </section>`;
+  }
+
+  const copy = statusCopy[p.status] ?? { title: p.status };
+  return `<section class="card well state" data-provider="${p.id}" style="--i:${i}">
+    ${head}
+    <div class="state-body">
+      <h3>${escapeHtml(copy.title)}</h3>
+      ${p.message ? `<p>${richText(p.message)}</p>` : ""}
+      ${copy.action ? `<button class="btn primary" data-action="${copy.action.id}">${copy.action.label}</button>` : ""}
+    </div>
+  </section>`;
+}
+
+export function usageHtml(state: AppState): string {
+  const providers = visibleProviders(state);
+  if (!providers.length) {
+    return `<section class="card well state"><div class="state-body"><h3>No services turned on</h3><p>Turn on Claude or Codex in Settings.</p><button class="btn primary" data-action="settings">Open Settings</button></div></section>`;
+  }
+  return providers.map(cardHtml).join("");
+}
+
+// ------------------------------------------------------------------ settings
+
+function toggle(id: string, on: boolean, label: string, sub = ""): string {
+  return `<label class="row">
+    <span class="row-text"><span>${label}</span>${sub ? `<small>${sub}</small>` : ""}</span>
+    <input type="checkbox" class="switch" data-setting="${id}" ${on ? "checked" : ""}/>
+  </label>`;
+}
+
+function segmented(id: string, value: string | number, options: [string | number, string][], big = false): string {
+  return `<div class="seg${big ? " big" : ""}" role="radiogroup"><span class="lens prism" aria-hidden="true"></span>${options
+    .map(
+      ([v, l]) =>
+        `<button role="radio" aria-checked="${String(v) === String(value)}" data-seg="${id}" data-value="${v}">${l}</button>`,
+    )
+    .join("")}</div>`;
+}
+
+export function settingsHtml(state: AppState): string {
+  const s: Settings = state.settings;
+  const statusLine = state.claudeStatusLine;
+  return `<div class="settings">
+    <h4>Appearance</h4>
+    ${segmented(
+      "theme",
+      s.theme,
+      [
+        ["system", `${icons.auto}Auto`],
+        ["light", `${icons.sun}Light`],
+        ["dark", `${icons.moon}Dark`],
+      ],
+      true,
+    )}
+
+    <h4>Services</h4>
+    <div class="group well">
+      ${toggle("claudeEnabled", s.claudeEnabled, "Claude", "Live plan limits via Claude Code")}
+      <div class="row sub-row">
+        <span class="row-text"><small>Show usage in Claude Code's status line</small></span>
+        <button class="btn small" data-action="${statusLine ? "claude-disconnect" : "claude-connect"}">${statusLine ? "Turn off" : "Turn on"}</button>
+      </div>
+      <div class="row sub-row">
+        <input class="text" data-text="claudePath" placeholder="Claude Code path · auto-detect" value="${escapeHtml(s.claudePath ?? "")}" spellcheck="false"/>
+      </div>
+      ${toggle("codexEnabled", s.codexEnabled, "Codex", "Plan limits from the Codex CLI")}
+      <div class="row sub-row">
+        <input class="text" data-text="codexPath" placeholder="Codex path · auto-detect" value="${escapeHtml(s.codexPath ?? "")}" spellcheck="false"/>
+      </div>
+    </div>
+
+    <h4>Alerts</h4>
+    <div class="group well">
+      <div class="row"><span class="row-text"><span>Notify at</span><small>Once per limit window</small></span>
+      ${segmented("alertThreshold", s.alertThreshold, [[0, "Off"], [75, "75"], [85, "85"], [95, "95"]])}</div>
+    </div>
+
+    <h4>Widget</h4>
+    <div class="group well">
+      ${toggle("alwaysOnTop", s.alwaysOnTop, "Keep on top")}
+      ${toggle("autostart", state.autostart, "Start with Windows")}
+      <div class="row"><span class="row-text"><span>Screen edge</span></span>
+      ${segmented("edge", s.edge, [["left", "Left"], ["right", "Right"]])}</div>
+      <div class="row"><span class="row-text"><span>Check every</span><small>Also checks right after you use Claude or Codex</small></span>
+      ${segmented("pollSeconds", s.pollSeconds, [[30, "30s"], [60, "1m"], [300, "5m"]])}</div>
+    </div>
+
+    <h4>About</h4>
+    <div class="group well">
+      <div class="row"><span class="row-text"><span>Limi ${escapeHtml(state.version)}</span><small data-update-status>Drag the rail to move it.</small></span>
+      <button class="btn small" data-action="check-update">Updates</button></div>
+      <div class="row"><button class="btn small ghost" data-action="hide">Hide widget</button><button class="btn small danger" data-action="quit">Quit</button></div>
+    </div>
+  </div>`;
+}
+
+// ------------------------------------------------------------------ painting values
+
+const tweens = new WeakMap<Element, number>();
+
+function setNumber(el: Element, target: number) {
+  const from = Number(el.textContent) || 0;
+  if (from === target) return;
+  const prev = tweens.get(el);
+  if (prev) cancelAnimationFrame(prev);
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    el.textContent = String(target);
+    return;
+  }
+  const start = performance.now();
+  const step = (t: number) => {
+    const k = Math.min(1, (t - start) / 800);
+    const eased = 1 - Math.pow(1 - k, 3);
+    el.textContent = String(Math.round(from + (target - from) * eased));
+    if (k < 1) tweens.set(el, requestAnimationFrame(step));
+  };
+  tweens.set(el, requestAnimationFrame(step));
+}
+
+function windowFor(usage: Usage, key: string) {
+  const [pid, which] = key.split(":") as [Pid, "session" | "weekly"];
+  const p = usage[pid];
+  if (!p) return { p: undefined, w: undefined };
+  return { p, w: which === "session" ? sessionWindow(p) : weeklyWindow(p) };
+}
+
+/** Update numbers, gauges and times in place so changes animate. */
+export function paint(root: HTMLElement, state: AppState) {
+  const usage = state.usage;
+  const shown = (key: string) => {
+    const { w } = windowFor(usage, key);
+    if (!w || isReset(w)) return null;
+    return clampPct(w.usedPercent);
+  };
+
+  root.querySelectorAll<SVGPathElement>("[data-ring]").forEach((el) => {
+    const pct = shown(el.dataset.ring!) ?? 0;
+    el.style.strokeDashoffset = String(100 - pct);
+    el.classList.toggle("zero", pct < 0.5);
+    el.dataset.level = level(pct);
+  });
+  root.querySelectorAll<HTMLElement>("[data-pct]").forEach((el) => {
+    const pct = shown(el.dataset.pct!);
+    if (pct === null) el.textContent = "–";
+    else setNumber(el, Math.round(pct));
+  });
+  root.querySelectorAll<HTMLElement>("[data-bar]").forEach((el) => {
+    const pct = shown(el.dataset.bar!) ?? 0;
+    el.style.width = `${pct}%`;
+    el.dataset.level = level(pct);
+  });
+  root.querySelectorAll<HTMLElement>("[data-dots]").forEach((el) => {
+    const pct = shown(el.dataset.dots!);
+    const on = pct === null ? 0 : Math.min(4, Math.ceil(pct / 25));
+    el.querySelectorAll("i").forEach((d, i) => d.classList.toggle("on", i < on));
+    el.dataset.level = level(pct ?? 0);
+    el.title = pct === null ? "Weekly: reset" : `Weekly ${Math.round(pct)}%`;
+  });
+  root.querySelectorAll<HTMLElement>("[data-clock]").forEach((el) => {
+    const { w } = windowFor(usage, el.dataset.clock!);
+    el.textContent = w && !isReset(w) ? clockShort(w.resetsAt) : "—";
+  });
+  root.querySelectorAll<HTMLElement>("[data-left]").forEach((el) => {
+    const { w } = windowFor(usage, el.dataset.left!);
+    if (!w) return;
+    if (isReset(w)) el.textContent = `Reset at ${resetClock(w.resetsAt)}`;
+    else if (w.resetsAt === null) el.textContent = "Reset time not reported";
+    else el.textContent = `in ${countdown(w.resetsAt)} · ${resetClock(w.resetsAt)}`;
+  });
+  root.querySelectorAll<HTMLElement>("[data-reset-line]").forEach((el) => {
+    const { w } = windowFor(usage, el.dataset.resetLine!);
+    if (!w) return;
+    if (isReset(w)) el.textContent = `Reset at ${resetClock(w.resetsAt)}`;
+    else if (w.resetsAt === null) el.textContent = "Reset time not reported";
+    else el.textContent = `Resets ${resetClock(w.resetsAt)} · in ${countdown(w.resetsAt)}`;
+  });
+  root.querySelectorAll<HTMLElement>("[data-tok]").forEach((el) => {
+    const [pid, which] = el.dataset.tok!.split(":") as [Pid, "session" | "weekly"];
+    const t = usage.tokens?.[pid]?.[which];
+    const b = el.querySelector("b")!;
+    b.textContent = t ? compactTokens(t.total) : "—";
+    el.title = t ? tokenTitle(t) : "No local activity found";
+  });
+  root.querySelectorAll<HTMLElement>("[data-note]").forEach((el) => {
+    const p = usage[el.dataset.note as Pid];
+    const text = p.windows.some(isReset) ? "A limit just reset. Fetching fresh numbers…" : "";
+    el.hidden = !text;
+    el.textContent = text;
+  });
+  root.querySelectorAll<HTMLElement>("[data-fresh]").forEach((el) => {
+    const p = usage[el.dataset.fresh as Pid];
+    let text = "";
+    let live = false;
+    if (hasNumbers(p)) {
+      const fresh = p.capturedAt !== null && Date.now() - p.capturedAt < state.settings.pollSeconds * 3000;
+      live = p.live && fresh && p.status === "ok";
+      text = live ? "Live" : `Updated ${ago(p.capturedAt)}`;
+    }
+    el.innerHTML = text ? `<i class="dot${live ? " live" : ""}"></i>${text}` : "";
+    el.title = `Source: ${p.source}`;
+  });
+  root.querySelectorAll<HTMLElement>("[data-level-of]").forEach((el) => {
+    const p = usage[el.dataset.levelOf as Pid];
+    const worst = Math.max(0, ...p.windows.filter((w) => !isReset(w)).map((w) => w.usedPercent));
+    el.dataset.level = hasNumbers(p) ? level(worst) : "ok";
+  });
+}

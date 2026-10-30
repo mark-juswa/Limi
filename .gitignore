@@ -1,0 +1,9 @@
+node_modules/
+dist/
+src-tauri/target/
+src-tauri/gen/
+*.key
+.claude/
+design/Iphone Duo Reference.jpg
+design/UI reference.png
+design/liquid glass.mp4

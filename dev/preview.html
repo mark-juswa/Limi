@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Limi preview</title>
+    <style>
+      html, body { margin: 0; height: 100%; overflow: hidden; font: 12px system-ui; color: #ddd;
+        background: url("wall.svg") center / cover, #8e9298; }
+      iframe { position: absolute; zoom: var(--z, 2); border: 0; background: transparent; outline: 1px dashed rgba(255,255,255,.12); }
+      nav { position: absolute; left: 16px; top: 16px; display: flex; gap: 8px; }
+      nav a { color: #fff; background: rgba(255,255,255,.12); padding: 6px 10px; border-radius: 8px; text-decoration: none; }
+    </style>
+  </head>
+  <body>
+    <nav>
+      <a href="?s=normal">Light</a><a href="?s=normal&t=dark">Dark</a><a href="?s=crit">Near limit</a><a href="?s=behind&t=dark">Behind</a><a href="?s=states">Setup states</a><a href="?s=left">Left edge</a>
+    </nav>
+    <iframe id="f" allowtransparency="true"></iframe>
+    <script>
+      const f = document.getElementById("f");
+      const Z = Number(new URLSearchParams(location.search).get("z") ?? 2);
+      document.documentElement.style.setProperty("--z", Z);
+      f.src = "frame.html" + location.search;
+      // The frame asks for a window size; place it like the real app docks it.
+      addEventListener("message", (e) => {
+        const { width, height, railHeight, edge, topRatio } = e.data || {};
+        if (!width) return;
+        const H = innerHeight / Z;
+        const railY = Math.round((H - railHeight) * topRatio);
+        const y = Math.max(0, Math.min(railY, H - height));
+        f.style.width = width + "px";
+        f.style.height = height + "px";
+        f.style.top = y + "px";
+        f.style.left = edge === "left" ? "0" : "";
+        f.style.right = edge === "left" ? "" : "0";
+        e.source.postMessage({ railTop: railY - y }, "*");
+      });
+    </script>
+  </body>
+</html>
