@@ -18,7 +18,7 @@ use crate::claude_live::{self, Fetch};
 use crate::codex::{self, Msg};
 use crate::model::{ProviderSnapshot, Status};
 use crate::paths;
-use crate::settings::{Edge, Settings, Theme};
+use crate::settings::{BarStyle, Edge, Placement, Settings, Theme};
 use crate::tokens::{Scanner, TokenUsage};
 use crate::window::{self, HitRect, LayoutInfo};
 
@@ -444,6 +444,8 @@ struct SettingsPatch {
     always_on_top: Option<bool>,
     edge: Option<Edge>,
     theme: Option<Theme>,
+    placement: Option<Placement>,
+    bar_style: Option<BarStyle>,
 }
 
 #[tauri::command]
@@ -467,6 +469,8 @@ fn update_settings(app: AppHandle, patch: SettingsPatch) -> Result<Settings, Str
         if let Some(v) = patch.always_on_top { s.always_on_top = v; }
         if let Some(v) = patch.edge { s.edge = v; }
         if let Some(v) = patch.theme { s.theme = v; }
+        if let Some(v) = patch.placement { s.placement = v; }
+        if let Some(v) = patch.bar_style { s.bar_style = v; }
         *s = s.clone().sanitized();
         s.save().map_err(|e| e.to_string())?;
         let after = (s.codex_enabled, s.codex_path.clone(), s.poll_seconds);

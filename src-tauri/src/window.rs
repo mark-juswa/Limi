@@ -4,7 +4,7 @@
 use serde::Serialize;
 use tauri::{Monitor, PhysicalPosition, PhysicalSize, WebviewWindow};
 
-use crate::settings::{Edge, Settings};
+use crate::settings::{Edge, Placement, Settings};
 
 /// Gap between the window and the screen edge (logical px). The rail sits flush
 /// against the edge; the page adds transparent padding on the other sides for its shadow.
@@ -69,12 +69,22 @@ pub fn apply(
     let px = |v: f64| (v * a.scale).round() as i32;
     let (w, h, rh, gap) = (px(width), px(height).min(a.h), px(rail_h), px(EDGE_GAP));
 
-    let x = match settings.edge {
-        Edge::Right => a.x + a.w - w - gap,
-        Edge::Left => a.x + gap,
+    let (x, y, rail_y) = match settings.placement {
+        Placement::Side => {
+            let x = match settings.edge {
+                Edge::Right => a.x + a.w - w - gap,
+                Edge::Left => a.x + gap,
+            };
+            let rail_y = a.y + ((a.h - rh).max(0) as f64 * settings.top_ratio).round() as i32;
+            (x, rail_y.min(a.y + a.h - h).max(a.y), rail_y)
+        }
+        // Centered on the top or bottom edge of the usable screen area.
+        Placement::Top => (a.x + (a.w - w) / 2, a.y, a.y),
+        Placement::Bottom => {
+            let y = a.y + a.h - h;
+            (a.x + (a.w - w) / 2, y, y)
+        }
     };
-    let rail_y = a.y + ((a.h - rh).max(0) as f64 * settings.top_ratio).round() as i32;
-    let y = rail_y.min(a.y + a.h - h).max(a.y);
 
     let info = LayoutInfo {
         edge: settings.edge,

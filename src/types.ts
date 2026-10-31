@@ -54,9 +54,13 @@ export interface Usage {
 export type Theme = "system" | "light" | "dark";
 
 export type Edge = "left" | "right";
+export type Placement = "side" | "top" | "bottom";
+export type BarStyle = "notch" | "island";
 
 export interface Settings {
   theme: Theme;
+  placement: Placement;
+  barStyle: BarStyle;
   claudeEnabled: boolean;
   codexEnabled: boolean;
   codexPath: string | null;

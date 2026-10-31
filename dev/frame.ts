@@ -35,6 +35,8 @@ const tok = (session: number, weekly: number) => ({
 
 const settings = {
   theme,
+  placement: q.get("p") ?? "side",
+  barStyle: q.get("b") ?? "island",
   claudeEnabled: true, codexEnabled: true, codexPath: null, pollSeconds: 60, alertThreshold: 85,
   alwaysOnTop: true, edge: s === "left" ? "left" : "right", topRatio: 0.3, monitor: null,
 };
@@ -49,7 +51,7 @@ mockIPC(async (cmd, args: any) => {
       return { settings, usage, version: "0.1.0", autostart: true, claudeStatusLine: false };
     case "set_layout": {
       const railTop = new Promise<number>((r) => (pendingRailTop = r));
-      parent.postMessage({ ...args, edge: settings.edge, topRatio: settings.topRatio }, "*");
+      parent.postMessage({ ...args, edge: settings.edge, topRatio: settings.topRatio, placement: settings.placement }, "*");
       return { edge: settings.edge, railTop: await railTop, height: args.height };
     }
     case "update_settings":

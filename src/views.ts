@@ -66,6 +66,7 @@ function arcBetween(r: number, from: number, to: number, clockwise: boolean): st
  * bottom. Dots below show weekly usage, two per service.
  */
 export function relaxHtml(state: AppState): string {
+  if (state.settings.placement !== "side") return relaxBarHtml(state);
   const ps = visibleProviders(state).filter(hasNumbers);
   const r = 40;
   const w = 11;
@@ -93,6 +94,21 @@ export function relaxHtml(state: AppState): string {
       <span class="relax-center" data-relax-center></span>
     </div>
     <div class="relax-dots">${dots}</div>`;
+}
+
+/** Top/bottom resting pill: a tiny gauge and percentage per service, side by side. */
+function relaxBarHtml(state: AppState): string {
+  const items = visibleProviders(state).map((p) => {
+    const key = `${p.id}:session`;
+    const value = hasNumbers(p)
+      ? `<b class="display" data-pct="${key}">0</b><small>%</small>`
+      : `<span class="glyph-inline">${icons.alert}</span>`;
+    return `<span class="hitem" data-provider="${p.id}" title="${escapeHtml(p.name)}">
+      <span class="mini">${gauge(key, 38, 14)}</span>
+      <span class="pglyph">${icons[p.id]}</span>${value}
+    </span>`;
+  });
+  return `<div class="hrelax">${items.join(`<span class="hsep"></span>`) || icons.cloud}</div>`;
 }
 
 export function visibleProviders(state: AppState): Provider[] {
@@ -280,8 +296,15 @@ export function settingsHtml(state: AppState): string {
     <div class="group well">
       ${toggle("alwaysOnTop", s.alwaysOnTop, "Keep on top")}
       ${toggle("autostart", state.autostart, "Start with Windows")}
-      <div class="row"><span class="row-text"><span>Screen edge</span></span>
-      ${segmented("edge", s.edge, [["left", "Left"], ["right", "Right"]])}</div>
+      <div class="row"><span class="row-text"><span>Placement</span></span>
+      ${segmented("placement", s.placement, [["side", "Side"], ["top", "Top"], ["bottom", "Bottom"]])}</div>
+      ${
+        s.placement === "side"
+          ? `<div class="row"><span class="row-text"><span>Screen edge</span></span>
+      ${segmented("edge", s.edge, [["left", "Left"], ["right", "Right"]])}</div>`
+          : `<div class="row"><span class="row-text"><span>Style</span><small>Attached to the edge, or floating</small></span>
+      ${segmented("barStyle", s.barStyle, [["notch", "Notch"], ["island", "Island"]])}</div>`
+      }
       <div class="row"><span class="row-text"><span>Check every</span><small>Codex; Claude every 5 min (its limit). Both also check after you use them.</small></span>
       ${segmented("pollSeconds", s.pollSeconds, [[60, "1m"], [120, "2m"], [300, "5m"]])}</div>
     </div>

@@ -10,6 +10,25 @@ pub enum Edge {
     Right,
 }
 
+/// Where the widget lives: the side rail, or centered on the top/bottom edge.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum Placement {
+    #[default]
+    Side,
+    Top,
+    Bottom,
+}
+
+/// Top/bottom look: attached to the edge (notch) or floating (Dynamic Island).
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum BarStyle {
+    Notch,
+    #[default]
+    Island,
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum Theme {
@@ -24,6 +43,8 @@ pub enum Theme {
 #[serde(default, rename_all = "camelCase")]
 pub struct Settings {
     pub theme: Theme,
+    pub placement: Placement,
+    pub bar_style: BarStyle,
     pub claude_enabled: bool,
     pub codex_enabled: bool,
     /// Optional explicit path to the codex executable.
@@ -48,6 +69,8 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             theme: Theme::System,
+            placement: Placement::Side,
+            bar_style: BarStyle::Island,
             claude_enabled: true,
             codex_enabled: true,
             codex_path: None,

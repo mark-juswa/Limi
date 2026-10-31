@@ -50,6 +50,7 @@ const rail = $(".rail");
 const relax = $(".relax");
 const RELAX_W = 60;
 stage.dataset.mode = mode;
+stage.dataset.place = "side";
 const panel = $(".panel");
 const viewEl = $(".view");
 
@@ -158,7 +159,7 @@ rootStyle.setProperty("--close-ms", `${CLOSE.ms}ms`);
 
 function motion(m: { easing: string; ms: number }) {
   const t = `${m.ms}ms ${m.easing}`;
-  shell.style.transition = `top ${t}, width ${t}, height ${t}`;
+  shell.style.transition = `top ${t}, left ${t}, width ${t}, height ${t}`;
 }
 
 // The window keeps one size (big enough for the open panel) so nothing ever
@@ -171,7 +172,24 @@ function panelHeight(): number {
   return Math.min(winH - PAD * 2, PANEL_MAX_H, Math.ceil(head + viewEl.scrollHeight + 18));
 }
 
+/** Gap between a floating island and the screen edge. */
+const ISLAND_GAP = 10;
+const horizontal = () => !!state && state.settings.placement !== "side";
+
 function shellRect(kind: Mode): [number, number, number, number] {
+  if (horizontal()) {
+    // Top/bottom: centered; a notch touches the edge, an island floats.
+    const [w, h] =
+      kind === "relaxed"
+        ? [Math.ceil(relax.offsetWidth), Math.ceil(relax.offsetHeight)]
+        : kind === "compact"
+          ? [Math.ceil(rail.offsetWidth), Math.ceil(rail.offsetHeight)]
+          : [PANEL_W, panelHeight()];
+    const gap = state.settings.barStyle === "island" ? ISLAND_GAP : 0;
+    const x = (PANEL_W + PAD * 2 - w) / 2;
+    const y = state.settings.placement === "top" ? gap : winH - h - gap;
+    return [x, y, w, h];
+  }
   let w = RAIL_W;
   let h = railHeight();
   let top = PAD + railTop;
@@ -189,7 +207,8 @@ function shellRect(kind: Mode): [number, number, number, number] {
 }
 
 function applyShell(kind: Mode) {
-  const [, y, w, h] = shellRect(kind);
+  const [x, y, w, h] = shellRect(kind);
+  shell.style.left = horizontal() ? `${x}px` : "";
   shell.style.top = `${y}px`;
   shell.style.width = `${w}px`;
   shell.style.height = `${h}px`;
@@ -211,9 +230,11 @@ const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /** Place the window for the current rail and redraw the glass where it belongs. */
 async function layoutCompact(animate = false) {
+  stage.dataset.place = state?.settings.placement ?? "side";
+  stage.dataset.bar = state?.settings.barStyle ?? "island";
   const info = await invoke<LayoutInfo>("set_layout", {
-    width: PANEL_W + PAD,
-    height: PANEL_MAX_H + PAD * 2,
+    width: horizontal() ? PANEL_W + PAD * 2 : PANEL_W + PAD,
+    height: horizontal() ? PANEL_MAX_H + PAD + ISLAND_GAP : PANEL_MAX_H + PAD * 2,
     railHeight: railHeight() + PAD * 2,
     animate,
   });
@@ -352,7 +373,7 @@ function railLens(): HTMLElement | null {
 function moveRailLens(item: HTMLElement) {
   const lens = railLens();
   const ring = item.querySelector<HTMLElement>(".ring");
-  if (!lens || !ring || mode !== "compact") return;
+  if (!lens || !ring || mode !== "compact" || horizontal()) return;
   const y = item.offsetTop + ring.offsetTop + ring.offsetHeight / 2 - 31;
   if (!lens.style.backdropFilter) refract(lens, 62, 62);
   const wasShown = lens.classList.contains("show");
@@ -440,10 +461,17 @@ async function render(force = false) {
 // ------------------------------------------------------------------ actions
 
 async function updateSettings(patch: Partial<Settings>) {
-  const prevEdge = state.settings.edge;
+  const prev = state.settings;
   state.settings = await invoke<Settings>("update_settings", { patch });
   applyTheme();
-  if (state.settings.edge !== prevEdge) await layoutCompact();
+  const s = state.settings;
+  if (s.placement !== prev.placement || s.barStyle !== prev.barStyle) {
+    // New orientation: redraw the rail and resting gauge, then move the window.
+    renderRail();
+    paint(shell, state);
+    if (view === "settings") renderView();
+    await layoutCompact();
+  } else if (s.edge !== prev.edge) await layoutCompact();
 }
 
 async function act(action: string, el: HTMLElement) {
@@ -522,7 +550,7 @@ shell.addEventListener("click", (e) => {
   if (seg && seg.getAttribute("aria-checked") !== "true") {
     const id = seg.dataset.seg as keyof Settings;
     const raw = seg.dataset.value!;
-    const value = id === "edge" || id === "theme" ? raw : Number(raw);
+    const value = ["edge", "theme", "placement", "barStyle"].includes(id) ? raw : Number(raw);
     seg.parentElement?.querySelectorAll("[data-seg]").forEach((b) => b.setAttribute("aria-checked", String(b === seg)));
     placeSegLenses(true);
     updateSettings({ [id]: value } as Partial<Settings>);
@@ -560,6 +588,8 @@ window.addEventListener("mousemove", async (e) => {
   if (!press) return;
   if (Math.hypot(e.screenX - press.x, e.screenY - press.y) < 4) return;
   press = null;
+  // Top/bottom placements stay centered on their edge.
+  if (horizontal()) return;
   hideRailLens();
   stage.classList.add("dragging");
   await appWindow.startDragging().catch(() => {});

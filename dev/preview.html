@@ -13,7 +13,7 @@
   </head>
   <body>
     <nav>
-      <a href="?s=normal">Light</a><a href="?s=normal&t=dark">Dark</a><a href="?s=crit">Near limit</a><a href="?s=behind&t=dark">Behind</a><a href="?s=states">Setup states</a><a href="?s=left">Left edge</a>
+      <a href="?s=normal">Light</a><a href="?s=normal&t=dark">Dark</a><a href="?s=crit">Near limit</a><a href="?s=behind&t=dark">Behind</a><a href="?s=states">Setup states</a><a href="?s=left">Left edge</a><a href="?p=top">Top island</a><a href="?p=top&b=notch&t=dark">Top notch</a><a href="?p=bottom">Bottom island</a>
     </nav>
     <iframe id="f" allowtransparency="true"></iframe>
     <script>
@@ -26,10 +26,19 @@
         const { width, height, railHeight, edge, topRatio } = e.data || {};
         if (!width) return;
         const H = innerHeight / Z;
-        const railY = Math.round((H - railHeight) * topRatio);
-        const y = Math.max(0, Math.min(railY, H - height));
+        const W = innerWidth / Z;
+        const place = e.data.placement || "side";
         f.style.width = width + "px";
         f.style.height = height + "px";
+        if (place !== "side") {
+          f.style.left = Math.round((W - width) / 2) + "px";
+          f.style.right = "";
+          f.style.top = place === "top" ? "0" : Math.round(H - height) + "px";
+          e.source.postMessage({ railTop: 0 }, "*");
+          return;
+        }
+        const railY = Math.round((H - railHeight) * topRatio);
+        const y = Math.max(0, Math.min(railY, H - height));
         f.style.top = y + "px";
         f.style.left = edge === "left" ? "0" : "";
         f.style.right = edge === "left" ? "" : "0";

@@ -364,6 +364,120 @@ svg {
   color: var(--warn);
 }
 
+/* ------------------------------------------------------------ top / bottom placements */
+
+/* centered on the edge: content is laid out in a row and centered in the glass */
+#stage[data-place="top"] .shell,
+#stage[data-place="bottom"] .shell {
+  right: auto;
+  border-radius: 22px;
+}
+#stage[data-place="top"][data-bar="notch"] .shell {
+  border-radius: 0 0 24px 24px;
+}
+#stage[data-place="bottom"][data-bar="notch"] .shell {
+  border-radius: 24px 24px 0 0;
+}
+#stage[data-place="top"][data-bar="island"][data-mode="relaxed"] .shell,
+#stage[data-place="bottom"][data-bar="island"][data-mode="relaxed"] .shell {
+  border-radius: 999px;
+}
+#stage[data-place="top"].expanded .shell,
+#stage[data-place="bottom"].expanded .shell {
+  border-radius: 30px;
+}
+#stage[data-place="top"][data-bar="notch"].expanded .shell {
+  border-radius: 0 0 30px 30px;
+}
+#stage[data-place="bottom"][data-bar="notch"].expanded .shell {
+  border-radius: 30px 30px 0 0;
+}
+#stage:not([data-place="side"]) .relax,
+#stage:not([data-place="side"]) .rail,
+#stage:not([data-place="side"]) .panel {
+  left: 0;
+  right: 0;
+  margin: 0 auto;
+}
+#stage:not([data-place="side"]) .relax {
+  width: max-content;
+  padding: 0;
+}
+#stage:not([data-place="side"]) .rail {
+  width: max-content;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 30px;
+  padding: 16px 26px 14px;
+}
+#stage[data-place="bottom"] .relax,
+#stage[data-place="bottom"] .rail,
+#stage[data-place="bottom"] .panel {
+  top: auto;
+  bottom: 0;
+}
+#stage[data-place="top"] .panel {
+  transform-origin: 50% 0;
+}
+#stage[data-place="bottom"] .panel {
+  transform-origin: 50% 100%;
+  transform: translateY(10px) scale(0.97);
+}
+#stage[data-place="bottom"].expanded .panel {
+  transform: none;
+}
+
+.hrelax {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 36px;
+  padding: 0 16px 0 10px;
+}
+#stage[data-bar="notch"] .hrelax {
+  height: 32px;
+  padding: 0 18px;
+}
+.hitem {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.hitem .mini {
+  position: relative;
+  width: 22px;
+  height: 22px;
+}
+.hitem .pglyph {
+  display: grid;
+  color: var(--ink-soft);
+  filter: var(--icon-glow);
+}
+.hitem .pglyph svg {
+  width: 11px;
+  height: 11px;
+}
+.hitem b {
+  font-size: 14px;
+  text-shadow: var(--glow);
+}
+.hitem small {
+  margin-left: -3px;
+  font-size: 10px;
+  font-weight: 650;
+  color: var(--muted);
+}
+.glyph-inline svg {
+  width: 14px;
+  height: 14px;
+  color: var(--warn);
+}
+.hsep {
+  width: 1px;
+  height: 14px;
+  background: var(--track);
+}
+
 /* resting state: one small gauge; grows into the rail on hover */
 .relax {
   position: absolute;
