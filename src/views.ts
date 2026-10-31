@@ -97,19 +97,30 @@ export function relaxHtml(state: AppState): string {
 }
 
 /** Top/bottom resting pill: a tiny gauge and percentage per service, side by side. */
-function relaxBarHtml(state: AppState): string {
+/**
+ * Top/bottom bar, one row per state. Resting: gauge and percentage per
+ * service. Hover (`wide`): the same row grows sideways with each service's
+ * reset time and weekly usage — never taller.
+ */
+function barHtml(state: AppState, wide: boolean): string {
   const items = visibleProviders(state).map((p) => {
     const key = `${p.id}:session`;
     const value = hasNumbers(p)
       ? `<b class="display" data-pct="${key}">0</b><small>%</small>`
       : `<span class="glyph-inline">${icons.alert}</span>`;
+    const meta =
+      wide && hasNumbers(p)
+        ? `<span class="hmeta"><span class="hclock display" data-clock="${key}">—</span><span class="hweek">wk <span data-pct="${p.id}:weekly">0</span>%</span></span>`
+        : "";
     return `<span class="hitem" data-provider="${p.id}" title="${escapeHtml(p.name)}">
-      <span class="mini">${gauge(key, 38, 14)}</span>
-      <span class="pglyph">${icons[p.id]}</span>${value}
+      <span class="mini">${gauge(key, 38, 13)}</span>
+      <span class="pglyph">${icons[p.id]}</span>${value}${meta}
     </span>`;
   });
-  return `<div class="hrelax">${items.join(`<span class="hsep"></span>`) || icons.cloud}</div>`;
+  return `<div class="hrelax${wide ? " wide" : ""}">${items.join(`<span class="hsep"></span>`) || icons.cloud}</div>`;
 }
+
+const relaxBarHtml = (state: AppState) => barHtml(state, false);
 
 export function visibleProviders(state: AppState): Provider[] {
   const { claude, codex } = state.usage;
@@ -149,6 +160,7 @@ function railItem(p: Provider): string {
 }
 
 export function railHtml(state: AppState): string {
+  if (state.settings.placement !== "side") return barHtml(state, true);
   const providers = visibleProviders(state);
   const items = providers.length
     ? providers.map(railItem).join("")

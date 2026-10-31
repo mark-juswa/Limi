@@ -174,6 +174,8 @@ function panelHeight(): number {
 
 /** Gap between a floating island and the screen edge. */
 const ISLAND_GAP = 10;
+/** Room for the widest top/bottom bar (hover shows more per service). */
+const BAR_MAX_W = 620;
 const horizontal = () => !!state && state.settings.placement !== "side";
 
 function shellRect(kind: Mode): [number, number, number, number] {
@@ -186,7 +188,7 @@ function shellRect(kind: Mode): [number, number, number, number] {
           ? [Math.ceil(rail.offsetWidth), Math.ceil(rail.offsetHeight)]
           : [PANEL_W, panelHeight()];
     const gap = state.settings.barStyle === "island" ? ISLAND_GAP : 0;
-    const x = (PANEL_W + PAD * 2 - w) / 2;
+    const x = (BAR_MAX_W + PAD * 2 - w) / 2;
     const y = state.settings.placement === "top" ? gap : winH - h - gap;
     return [x, y, w, h];
   }
@@ -233,7 +235,7 @@ async function layoutCompact(animate = false) {
   stage.dataset.place = state?.settings.placement ?? "side";
   stage.dataset.bar = state?.settings.barStyle ?? "island";
   const info = await invoke<LayoutInfo>("set_layout", {
-    width: horizontal() ? PANEL_W + PAD * 2 : PANEL_W + PAD,
+    width: horizontal() ? BAR_MAX_W + PAD * 2 : PANEL_W + PAD,
     height: horizontal() ? PANEL_MAX_H + PAD + ISLAND_GAP : PANEL_MAX_H + PAD * 2,
     railHeight: railHeight() + PAD * 2,
     animate,

@@ -378,9 +378,15 @@ svg {
 #stage[data-place="bottom"][data-bar="notch"] .shell {
   border-radius: 24px 24px 0 0;
 }
-#stage[data-place="top"][data-bar="island"][data-mode="relaxed"] .shell,
-#stage[data-place="bottom"][data-bar="island"][data-mode="relaxed"] .shell {
+#stage[data-place="top"][data-bar="island"]:not(.expanded) .shell,
+#stage[data-place="bottom"][data-bar="island"]:not(.expanded) .shell {
   border-radius: 999px;
+}
+#stage[data-place="top"][data-bar="notch"]:not(.expanded) .shell {
+  border-radius: 0 0 22px 22px;
+}
+#stage[data-place="bottom"][data-bar="notch"]:not(.expanded) .shell {
+  border-radius: 22px 22px 0 0;
 }
 #stage[data-place="top"].expanded .shell,
 #stage[data-place="bottom"].expanded .shell {
@@ -405,10 +411,7 @@ svg {
 }
 #stage:not([data-place="side"]) .rail {
   width: max-content;
-  flex-direction: row;
-  align-items: flex-start;
-  gap: 30px;
-  padding: 16px 26px 14px;
+  padding: 0;
 }
 #stage[data-place="bottom"] .relax,
 #stage[data-place="bottom"] .rail,
@@ -430,23 +433,45 @@ svg {
 .hrelax {
   display: flex;
   align-items: center;
-  gap: 12px;
-  height: 36px;
-  padding: 0 16px 0 10px;
+  gap: 16px;
+  height: 46px;
+  padding: 0 22px 0 12px;
+}
+.hrelax.wide {
+  gap: 20px;
+  padding: 0 24px 0 14px;
 }
 #stage[data-bar="notch"] .hrelax {
-  height: 32px;
-  padding: 0 18px;
+  height: 44px;
+  padding: 0 24px;
 }
 .hitem {
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 7px;
 }
 .hitem .mini {
   position: relative;
-  width: 22px;
-  height: 22px;
+  width: 30px;
+  height: 30px;
+}
+.hmeta {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-left: 6px;
+  padding-left: 10px;
+  border-left: 1px solid var(--track);
+}
+.hclock {
+  font-size: 15px;
+  text-shadow: var(--glow);
+}
+.hweek {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
 }
 .hitem .pglyph {
   display: grid;
@@ -454,16 +479,16 @@ svg {
   filter: var(--icon-glow);
 }
 .hitem .pglyph svg {
-  width: 11px;
-  height: 11px;
+  width: 13px;
+  height: 13px;
 }
 .hitem b {
-  font-size: 14px;
+  font-size: 17px;
   text-shadow: var(--glow);
 }
 .hitem small {
-  margin-left: -3px;
-  font-size: 10px;
+  margin-left: -5px;
+  font-size: 11px;
   font-weight: 650;
   color: var(--muted);
 }
@@ -474,7 +499,7 @@ svg {
 }
 .hsep {
   width: 1px;
-  height: 14px;
+  height: 18px;
   background: var(--track);
 }
 
