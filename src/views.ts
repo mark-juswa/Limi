@@ -30,6 +30,7 @@ export const icons = {
   clock: `<svg viewBox="0 0 24 24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l2.5 2"/></g></svg>`,
   sun: `<svg viewBox="0 0 24 24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4" fill="currentColor"/><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.3 5.3l1.6 1.6M17.1 17.1l1.6 1.6M5.3 18.7l1.6-1.6M17.1 6.9l1.6-1.6"/></g></svg>`,
   moon: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z" fill="currentColor"/></svg>`,
+  cloud: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7.5 18.5h9.2a3.8 3.8 0 0 0 .6-7.55A5.6 5.6 0 0 0 6.6 10.6a4 4 0 0 0 .9 7.9z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>`,
   auto: `<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 4a8 8 0 0 1 0 16z" fill="currentColor"/></svg>`,
 };
 
@@ -49,6 +50,49 @@ function gauge(key: string, r: number, w: number): string {
     <path class="track" d="${d}" stroke-width="${w}"/>
     <path class="prog" data-ring="${key}" d="${d}" stroke-width="${w}" pathLength="100"/>
   </svg>`;
+}
+
+/** Arc between two angles (degrees, clockwise from 3 o'clock), radius r. */
+function arcBetween(r: number, from: number, to: number, clockwise: boolean): string {
+  const rad = (deg: number) => (deg * Math.PI) / 180;
+  const p = (deg: number) => `${(50 + r * Math.cos(rad(deg))).toFixed(2)} ${(50 + r * Math.sin(rad(deg))).toFixed(2)}`;
+  const span = Math.abs(to - from);
+  return `M ${p(from)} A ${r} ${r} 0 ${span > 180 ? 1 : 0} ${clockwise ? 1 : 0} ${p(to)}`;
+}
+
+/**
+ * Resting state: one small Duo gauge for everything. With two services the
+ * ring splits in half (Claude left, Codex right), each filling upward from the
+ * bottom. Dots below show weekly usage, two per service.
+ */
+export function relaxHtml(state: AppState): string {
+  const ps = visibleProviders(state).filter(hasNumbers);
+  const r = 40;
+  const w = 11;
+  let arcs = "";
+  if (ps.length >= 2) {
+    const halves: [Provider, string][] = [
+      [ps[0], arcBetween(r, 120, 264, true)],
+      [ps[1], arcBetween(r, 60, -84, false)],
+    ];
+    arcs = halves
+      .map(
+        ([p, d]) => `<path class="track" d="${d}" stroke-width="${w}"/>
+        <path class="prog" data-ring="${p.id}:session" d="${d}" stroke-width="${w}" pathLength="100"/>`,
+      )
+      .join("");
+  } else {
+    const d = arc(r);
+    const key = ps[0] ? `${ps[0].id}:session` : "none";
+    arcs = `<path class="track" d="${d}" stroke-width="${w}"/><path class="prog" data-ring="${key}" d="${d}" stroke-width="${w}" pathLength="100"/>`;
+  }
+  const dots = ps.length >= 2 ? ps.slice(0, 2).map((p) => `<span class="rdots" data-rdots="${p.id}:2"><i></i><i></i></span>`).join("") : ps[0] ? `<span class="rdots" data-rdots="${ps[0].id}:4"><i></i><i></i><i></i><i></i></span>` : "";
+  const names = ps.map((p) => p.name).join(" and ");
+  return `<div class="relax-ring" title="${escapeHtml(names || "Limi")}">
+      <svg class="ring-svg" viewBox="0 0 100 100" aria-hidden="true">${arcs}</svg>
+      <span class="relax-center" data-relax-center></span>
+    </div>
+    <div class="relax-dots">${dots}</div>`;
 }
 
 export function visibleProviders(state: AppState): Provider[] {
@@ -373,6 +417,24 @@ export function paint(root: HTMLElement, state: AppState) {
     }
     el.innerHTML = text ? `<i class="dot${live ? " live" : ""}"></i>${text}` : "";
     el.title = `Source: ${p.source}`;
+  });
+  // Resting gauge: a number appears only when something needs attention.
+  root.querySelectorAll<HTMLElement>("[data-relax-center]").forEach((el) => {
+    let worst: { pct: number } | null = null;
+    for (const p of [usage.claude, usage.codex]) {
+      const pct = shown(`${p.id}:session`);
+      if (pct !== null && pct >= 75 && (!worst || pct > worst.pct)) worst = { pct };
+    }
+    const next = worst ? `<b class="display" data-level="${level(worst.pct)}">${Math.round(worst.pct)}</b>` : icons.cloud;
+    if (el.innerHTML !== next) el.innerHTML = next;
+  });
+  root.querySelectorAll<HTMLElement>("[data-rdots]").forEach((el) => {
+    const [pid, n] = el.dataset.rdots!.split(":");
+    const pct = shown(`${pid}:weekly`);
+    const step = 100 / Number(n);
+    const on = pct === null ? 0 : Math.min(Number(n), Math.ceil(pct / step));
+    el.querySelectorAll("i").forEach((d, i) => d.classList.toggle("on", i < on));
+    el.dataset.level = level(pct ?? 0);
   });
   root.querySelectorAll<HTMLElement>("[data-level-of]").forEach((el) => {
     const p = usage[el.dataset.levelOf as Pid];

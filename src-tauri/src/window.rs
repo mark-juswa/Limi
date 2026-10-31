@@ -190,9 +190,15 @@ pub fn spawn_hit_test(window: WebviewWindow, rect: std::sync::Arc<std::sync::Mut
     use tauri::Emitter;
     std::thread::spawn(move || {
         let mut inside_last: Option<bool> = None;
+        let mut rect_last: Option<HitRect> = None;
         loop {
             std::thread::sleep(std::time::Duration::from_millis(25));
             let Some(r) = *rect.lock().unwrap() else { continue };
+            // New interactive area (e.g. the panel closed): report the pointer afresh.
+            if rect_last != Some(r) {
+                rect_last = Some(r);
+                inside_last = None;
+            }
             let (Some((cx, cy)), Ok(pos), Ok(scale)) = (cursor(), window.outer_position(), window.scale_factor()) else {
                 continue;
             };

@@ -5,7 +5,7 @@ import "./styles.css";
 import logo from "./logo.png";
 import { ago, isReset } from "./format";
 import type { AppState, LayoutInfo, Settings, Usage } from "./types";
-import { icons, paint, railHtml, settingsHtml, usageHtml, visibleProviders } from "./views";
+import { icons, paint, railHtml, relaxHtml, settingsHtml, usageHtml, visibleProviders } from "./views";
 
 // Geometry (logical px). The widget sits flush on the screen edge; PAD is
 // transparent room for the shadow on the other three sides.
@@ -18,7 +18,9 @@ const appWindow = getCurrentWindow();
 const $ = <T extends HTMLElement>(sel: string) => document.querySelector(sel) as T;
 
 let state: AppState;
-let mode: "compact" | "expanded" = "compact";
+// relaxed: small resting gauge · compact: the full rail (on hover) · expanded: the panel
+type Mode = "relaxed" | "compact" | "expanded";
+let mode: Mode = "relaxed";
 let view: "usage" | "settings" = "usage";
 let busy = false;
 let railTop = 0;
@@ -27,6 +29,7 @@ let shapeKey = "";
 document.body.innerHTML = `
   <div id="stage">
     <div id="shell" class="shell glass">
+      <div class="relax" aria-hidden="true"></div>
       <div class="rail" role="button" tabindex="0" aria-label="Show usage details"></div>
       <div class="panel" aria-hidden="true">
         <header class="panel-head">
@@ -44,6 +47,9 @@ document.body.innerHTML = `
 const stage = $("#stage");
 const shell = $("#shell");
 const rail = $(".rail");
+const relax = $(".relax");
+const RELAX_W = 60;
+stage.dataset.mode = mode;
 const panel = $(".panel");
 const viewEl = $(".view");
 
@@ -165,11 +171,14 @@ function panelHeight(): number {
   return Math.min(winH - PAD * 2, PANEL_MAX_H, Math.ceil(head + viewEl.scrollHeight + 18));
 }
 
-function shellRect(kind: "compact" | "expanded"): [number, number, number, number] {
+function shellRect(kind: Mode): [number, number, number, number] {
   let w = RAIL_W;
   let h = railHeight();
   let top = PAD + railTop;
-  if (kind === "expanded") {
+  if (kind === "relaxed") {
+    w = RELAX_W;
+    h = Math.ceil(relax.scrollHeight);
+  } else if (kind === "expanded") {
     w = PANEL_W;
     h = panelHeight();
     // Open downward from the rail; slide up only if the screen ends first.
@@ -179,14 +188,14 @@ function shellRect(kind: "compact" | "expanded"): [number, number, number, numbe
   return [x, top, w, h];
 }
 
-function applyShell(kind: "compact" | "expanded") {
+function applyShell(kind: Mode) {
   const [, y, w, h] = shellRect(kind);
   shell.style.top = `${y}px`;
   shell.style.width = `${w}px`;
   shell.style.height = `${h}px`;
 }
 
-function setHit(kind: "compact" | "expanded") {
+function setHit(kind: Mode) {
   const [x, y, width, height] = shellRect(kind);
   invoke("set_hit_rect", { x, y, width, height }).catch(() => {});
 }
@@ -230,7 +239,7 @@ async function expand(to: "usage" | "settings" = "usage") {
     view = to;
     renderView();
   }
-  mode = "expanded";
+  setMode("expanded");
   setHit("expanded");
   motion(OPEN);
   stage.classList.add("expanded");
@@ -246,7 +255,7 @@ async function expand(to: "usage" | "settings" = "usage") {
 async function collapse() {
   if (busy || mode !== "expanded") return;
   busy = true;
-  mode = "compact";
+  setMode("compact");
   motion(CLOSE);
   stage.classList.remove("expanded");
   panel.setAttribute("aria-hidden", "true");
@@ -258,6 +267,38 @@ async function collapse() {
     renderView();
   }
   busy = false;
+}
+
+function setMode(next: Mode) {
+  mode = next;
+  stage.dataset.mode = next;
+}
+
+// ------------------------------------------------------------------ resting ⇄ rail
+
+let restTimer = 0;
+
+/** Pointer arrived: grow the resting gauge into the full rail. */
+function wake() {
+  clearTimeout(restTimer);
+  if (mode !== "relaxed" || busy) return;
+  setMode("compact");
+  motion(RESIZE);
+  applyShell("compact");
+  setHit("compact");
+}
+
+/** Pointer left: settle back into the resting gauge after a short pause. */
+function restSoon() {
+  clearTimeout(restTimer);
+  restTimer = window.setTimeout(() => {
+    if (mode !== "compact" || busy || stage.classList.contains("dragging")) return;
+    hideRailLens();
+    setMode("relaxed");
+    motion(CLOSE);
+    applyShell("relaxed");
+    setHit("relaxed");
+  }, 600);
 }
 
 async function showView(next: "usage" | "settings") {
@@ -350,6 +391,7 @@ function computeShape(s: AppState): string {
 
 function renderRail() {
   rail.innerHTML = railHtml(state);
+  relax.innerHTML = relaxHtml(state);
   const names = visibleProviders(state)
     .map((p) => {
       const w = p.windows[0];
@@ -383,7 +425,7 @@ async function render(force = false) {
     if (view === "usage") renderView();
     // Next frame so new elements animate from zero.
     requestAnimationFrame(() => paint(shell, state));
-    const rh = railHeight();
+    const rh = railHeight() * 1000 + relax.scrollHeight;
     if (!busy && rh !== lastRailH) {
       lastRailH = rh;
       await layoutCompact();
@@ -507,10 +549,12 @@ shell.addEventListener("change", async (e) => {
 
 let press: { x: number; y: number } | null = null;
 
-rail.addEventListener("mousedown", (e) => {
-  if (e.button !== 0 || mode !== "compact" || busy) return;
+const onPress = (e: MouseEvent) => {
+  if (e.button !== 0 || mode === "expanded" || busy) return;
   press = { x: e.screenX, y: e.screenY };
-});
+};
+rail.addEventListener("mousedown", onPress);
+relax.addEventListener("mousedown", onPress);
 
 window.addEventListener("mousemove", async (e) => {
   if (!press) return;
@@ -591,7 +635,11 @@ async function boot() {
   await listen("open-settings", () => expand("settings"));
   // The cursor left the glass (the window stops getting mouse events then).
   await listen<boolean>("hover", (e) => {
-    if (!e.payload) hideRailLens();
+    if (e.payload) wake();
+    else {
+      hideRailLens();
+      restSoon();
+    }
   });
   await reload();
   setInterval(tick, 1000);

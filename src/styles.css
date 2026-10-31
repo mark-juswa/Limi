@@ -364,6 +364,103 @@ svg {
   color: var(--warn);
 }
 
+/* resting state: one small gauge; grows into the rail on hover */
+.relax {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: var(--relax-w, 60px);
+  padding: 12px 0 11px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 7px;
+  cursor: pointer;
+  opacity: 0;
+  transform: scale(0.8);
+  filter: blur(4px);
+  pointer-events: none;
+  transition:
+    opacity 140ms ease,
+    transform 260ms var(--ease),
+    filter 200ms ease;
+}
+#stage[data-edge="left"] .relax {
+  right: auto;
+  left: 0;
+}
+#stage[data-mode="relaxed"] .relax {
+  opacity: 1;
+  transform: none;
+  filter: none;
+  pointer-events: auto;
+  transition:
+    opacity 240ms ease 80ms,
+    transform var(--close-ms, 420ms) var(--close-ease, ease),
+    filter 240ms ease 60ms;
+}
+#stage[data-mode="relaxed"] .rail {
+  opacity: 0;
+  transform: scale(0.82);
+  filter: blur(6px);
+  pointer-events: none;
+  transition:
+    opacity 110ms ease,
+    transform 260ms var(--ease),
+    filter 200ms ease;
+}
+.relax-ring {
+  position: relative;
+  width: 40px;
+  height: 40px;
+}
+.relax-center {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--ink-soft);
+  filter: var(--icon-glow);
+}
+.relax-center svg {
+  width: 17px;
+  height: 17px;
+}
+.relax-center b {
+  font-size: 15px;
+  text-shadow: var(--glow);
+}
+.relax-center b[data-level="warn"] {
+  color: var(--warn);
+}
+.relax-center b[data-level="crit"] {
+  color: var(--crit);
+}
+.relax-dots {
+  display: flex;
+  gap: 8px;
+}
+.rdots {
+  display: flex;
+  gap: 3px;
+}
+.rdots i {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--track);
+  transition: background 300ms ease;
+}
+.rdots i.on {
+  background: var(--ink);
+}
+.rdots[data-level="warn"] i.on {
+  background: var(--warn);
+}
+.rdots[data-level="crit"] i.on {
+  background: var(--crit);
+}
+
 /* hover lens that glides between gauges */
 .rail .lens {
   left: 50%;
