@@ -103,19 +103,22 @@ export function relaxHtml(state: AppState): string {
  * reset time and weekly usage — never taller.
  */
 function barHtml(state: AppState, wide: boolean): string {
+  // Same language as the side rail: gauge with the number inside, bold reset
+  // time, icon and weekly dots — laid out in a row so it only grows sideways.
   const items = visibleProviders(state).map((p) => {
     const key = `${p.id}:session`;
-    const value = hasNumbers(p)
-      ? `<b class="display" data-pct="${key}">0</b><small>%</small>`
-      : `<span class="glyph-inline">${icons.alert}</span>`;
-    const meta =
+    const inner = hasNumbers(p)
+      ? `<b class="num display" data-pct="${key}">0</b>`
+      : `<span class="glyph${p.status === "waiting" ? "" : " warn"}">${p.status === "waiting" ? icons.clock : icons.alert}</span>`;
+    const ring = `<span class="ring hring">${gauge(key, 41, 11)}${inner}</span>`;
+    const side =
       wide && hasNumbers(p)
-        ? `<span class="hmeta"><span class="hclock display" data-clock="${key}">—</span><span class="hweek">wk <span data-pct="${p.id}:weekly">0</span>%</span></span>`
-        : "";
-    return `<span class="hitem" data-provider="${p.id}" title="${escapeHtml(p.name)}">
-      <span class="mini">${gauge(key, 38, 13)}</span>
-      <span class="pglyph">${icons[p.id]}</span>${value}${meta}
-    </span>`;
+        ? `<span class="hcol">
+            <span class="clock display" data-clock="${key}">—</span>
+            <span class="hsub"><span class="pglyph">${icons[p.id]}</span><span class="dots" data-dots="${p.id}:weekly"><i></i><i></i><i></i><i></i></span></span>
+          </span>`
+        : `<span class="pglyph">${icons[p.id]}</span>`;
+    return `<span class="hitem rail-item" data-provider="${p.id}" data-level-of="${p.id}" title="${escapeHtml(p.name)}">${ring}${side}</span>`;
   });
   return `<div class="hrelax${wide ? " wide" : ""}">${items.join(`<span class="hsep"></span>`) || icons.cloud}</div>`;
 }

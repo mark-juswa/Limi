@@ -433,64 +433,54 @@ svg {
 .hrelax {
   display: flex;
   align-items: center;
-  gap: 16px;
-  height: 46px;
+  gap: 18px;
+  height: 62px;
   padding: 0 22px 0 12px;
 }
 .hrelax.wide {
-  gap: 20px;
-  padding: 0 24px 0 14px;
+  gap: 22px;
+  padding: 0 26px 0 12px;
 }
 #stage[data-bar="notch"] .hrelax {
-  height: 44px;
-  padding: 0 24px;
+  height: 60px;
+  padding: 0 24px 0 18px;
 }
-.hitem {
+.hrelax .hitem.rail-item {
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+}
+.hrelax .hitem .hring {
+  width: 44px;
+  height: 44px;
+}
+.hrelax .hitem .num {
+  font-size: 16px;
+}
+.hrelax .hitem > .pglyph {
+  margin-top: 0;
+}
+.hcol {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 5px;
+}
+.hrelax .hcol .clock {
+  margin-top: 0;
+  font-size: 17px;
+  line-height: 18px;
+}
+.hsub {
   display: flex;
   align-items: center;
   gap: 7px;
 }
-.hitem .mini {
-  position: relative;
-  width: 30px;
-  height: 30px;
+.hrelax .hsub .pglyph {
+  margin-top: 0;
 }
-.hmeta {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  margin-left: 6px;
-  padding-left: 10px;
-  border-left: 1px solid var(--track);
-}
-.hclock {
-  font-size: 15px;
-  text-shadow: var(--glow);
-}
-.hweek {
-  font-size: 11.5px;
-  font-weight: 600;
-  color: var(--muted);
-  font-variant-numeric: tabular-nums;
-}
-.hitem .pglyph {
-  display: grid;
-  color: var(--ink-soft);
-  filter: var(--icon-glow);
-}
-.hitem .pglyph svg {
-  width: 13px;
-  height: 13px;
-}
-.hitem b {
-  font-size: 17px;
-  text-shadow: var(--glow);
-}
-.hitem small {
-  margin-left: -5px;
-  font-size: 11px;
-  font-weight: 650;
-  color: var(--muted);
+.hrelax .hsub .dots {
+  margin-top: 0;
 }
 .glyph-inline svg {
   width: 14px;
@@ -499,7 +489,7 @@ svg {
 }
 .hsep {
   width: 1px;
-  height: 18px;
+  height: 26px;
   background: var(--track);
 }
 
