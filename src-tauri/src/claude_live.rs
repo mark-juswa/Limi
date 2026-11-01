@@ -102,7 +102,8 @@ fn scoped_label(kind: &str) -> String {
 pub fn parse(resp: &Value) -> Fetch {
     let plan = resp.get("subscription_type").and_then(Value::as_str).map(plan_name);
     if resp.get("rate_limits_available").and_then(Value::as_bool) == Some(false) {
-        return Fetch::NoLimits;
+        // No plan at all means Claude Code has no claude.ai login to ask with.
+        return if plan.is_none() { Fetch::SignedOut } else { Fetch::NoLimits };
     }
     let Some(rl) = resp.get("rate_limits").filter(|v| v.is_object()) else {
         // Limits exist for this plan but none came back: the service refused
@@ -190,6 +191,22 @@ pub async fn fetch(exe: &Path) -> Fetch {
     .kill_on_drop(true);
     #[cfg(windows)]
     cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+    // Started from inside a Claude Code session (e.g. by Claude Desktop), Limi
+    // inherits that session's variables. They make the helper act as a child
+    // session using the host's login, which it can't reach. Drop them so the
+    // helper uses the user's own Claude Code login.
+    if std::env::var_os("CLAUDECODE").is_some() {
+        for (key, _) in std::env::vars_os() {
+            let k = key.to_string_lossy().to_ascii_uppercase();
+            let session_var = k == "CLAUDECODE"
+                || k == "AI_AGENT"
+                || (k.starts_with("CLAUDE_") && k != "CLAUDE_CONFIG_DIR")
+                || k.starts_with("_CLAUDE_");
+            if session_var {
+                cmd.env_remove(&key);
+            }
+        }
+    }
 
     let mut child = match cmd.spawn() {
         Ok(c) => c,
@@ -278,7 +295,9 @@ mod tests {
         let Fetch::Ok { windows, fresh, .. } = parse(&v) else { panic!() };
         assert!(!fresh);
         assert_eq!((windows[0].used_percent, windows[0].resets_at), (12.0, None));
-        assert_eq!(parse(&json!({ "rate_limits_available": false })), Fetch::NoLimits);
+        assert_eq!(parse(&json!({ "subscription_type": "team", "rate_limits_available": false })), Fetch::NoLimits);
+        // Captured while signed out of Claude Code.
+        assert_eq!(parse(&json!({ "subscription_type": null, "rate_limits_available": false, "rate_limits": null })), Fetch::SignedOut);
         // Captured while rate-limited: plan has limits, but none returned.
         assert_eq!(parse(&json!({ "subscription_type": "pro", "rate_limits_available": true, "rate_limits": null })), Fetch::Busy);
     }

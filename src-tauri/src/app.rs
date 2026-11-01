@@ -281,7 +281,7 @@ fn live_snapshot(fetch: Fetch, previous: Option<ProviderSnapshot>) -> ProviderSn
         ),
         Fetch::SignedOut => base.with_status(
             Status::SignedOut,
-            "Claude Code isn't signed in. Run `claude` and use /login.".to_string(),
+            "Claude Code isn't signed in on this PC. Open a terminal, run `claude`, and use /login with your Pro or Max account.".to_string(),
         ),
         // Temporary: keep the last numbers, or explain the wait.
         Fetch::Busy => keep_previous(previous).unwrap_or_else(|| {
