@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Pomodoro focus timer with a flip clock in every placement; focus, break and long-break lengths in Settings.
+- Claude: shows "Not signed in" when Claude Code has no login, instead of "no plan limits".
+
 ## 0.1.0
 
 First release.

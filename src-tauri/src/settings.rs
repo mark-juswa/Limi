@@ -63,6 +63,11 @@ pub struct Settings {
     /// The user's own Claude Code status line, kept so the bridge can run it
     /// and so disconnecting restores it exactly.
     pub claude_previous_status_line: Option<Value>,
+    /// Pomodoro focus timer.
+    pub pomodoro_enabled: bool,
+    pub focus_minutes: u32,
+    pub break_minutes: u32,
+    pub long_break_minutes: u32,
 }
 
 impl Default for Settings {
@@ -82,6 +87,10 @@ impl Default for Settings {
             top_ratio: 0.3,
             monitor: None,
             claude_previous_status_line: None,
+            pomodoro_enabled: false,
+            focus_minutes: 25,
+            break_minutes: 5,
+            long_break_minutes: 15,
         }
     }
 }
@@ -108,6 +117,9 @@ impl Settings {
             self.top_ratio = 0.3;
         }
         self.top_ratio = self.top_ratio.clamp(0.0, 1.0);
+        self.focus_minutes = self.focus_minutes.clamp(1, 180);
+        self.break_minutes = self.break_minutes.clamp(1, 60);
+        self.long_break_minutes = self.long_break_minutes.clamp(1, 90);
         self
     }
 

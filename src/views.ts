@@ -12,7 +12,7 @@ import {
   sessionWindow,
   weeklyWindow,
 } from "./format";
-import type { AppState, Provider, Settings, TokenTotals, Usage } from "./types";
+import type { AppState, Pomodoro, Provider, Settings, TokenTotals, Usage } from "./types";
 
 type Pid = "claude" | "codex";
 
@@ -31,6 +31,8 @@ export const icons = {
   sun: `<svg viewBox="0 0 24 24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4" fill="currentColor"/><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.3 5.3l1.6 1.6M17.1 17.1l1.6 1.6M5.3 18.7l1.6-1.6M17.1 6.9l1.6-1.6"/></g></svg>`,
   moon: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z" fill="currentColor"/></svg>`,
   cloud: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7.5 18.5h9.2a3.8 3.8 0 0 0 .6-7.55A5.6 5.6 0 0 0 6.6 10.6a4 4 0 0 0 .9 7.9z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>`,
+  timer: `<svg viewBox="0 0 24 24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13.5" r="7.5"/><path d="M12 13.5V9.5M9.5 2.5h5M18.5 6l1.3-1.3"/></g></svg>`,
+  skip: `<svg viewBox="0 0 24 24" aria-hidden="true"><g fill="currentColor"><path d="M5.5 6.2v11.6c0 .8.9 1.3 1.6.8l8.2-5.8a1 1 0 0 0 0-1.6L7.1 5.4c-.7-.5-1.6 0-1.6.8z"/><rect x="16.6" y="5.5" width="2.6" height="13" rx="1.3"/></g></svg>`,
   auto: `<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 4a8 8 0 0 1 0 16z" fill="currentColor"/></svg>`,
 };
 
@@ -93,7 +95,8 @@ export function relaxHtml(state: AppState): string {
       <svg class="ring-svg" viewBox="0 0 100 100" aria-hidden="true">${arcs}</svg>
       <span class="relax-center" data-relax-center></span>
     </div>
-    <div class="relax-dots">${dots}</div>`;
+    <div class="relax-dots">${dots}</div>
+    ${pomoOn(state) ? `<div class="relax-pomo" data-pomo>${flipClock("stack")}</div>` : ""}`;
 }
 
 /** Top/bottom resting pill: a tiny gauge and percentage per service, side by side. */
@@ -120,6 +123,11 @@ function barHtml(state: AppState, wide: boolean): string {
         : `<span class="pglyph">${icons[p.id]}</span>`;
     return `<span class="hitem rail-item" data-provider="${p.id}" data-level-of="${p.id}" title="${escapeHtml(p.name)}">${ring}${side}</span>`;
   });
+  if (pomoOn(state)) {
+    items.push(
+      `<span class="hitem pomo-hitem" data-pomo>${flipClock("row")}${wide ? `<span class="word" data-pomo-word></span>` : ""}</span>`,
+    );
+  }
   return `<div class="hrelax${wide ? " wide" : ""}">${items.join(`<span class="hsep"></span>`) || icons.cloud}</div>`;
 }
 
@@ -168,7 +176,122 @@ export function railHtml(state: AppState): string {
   const items = providers.length
     ? providers.map(railItem).join("")
     : `<div class="rail-item"><div class="ring">${gauge("none", 41, 11)}<span class="glyph">${icons.gear}</span></div><div class="word">Setup</div></div>`;
-  return `<span class="lens prism" aria-hidden="true"></span>${items}`;
+  const pomo = pomoOn(state)
+    ? `<div class="rail-item pomo-item" data-pomo>${flipClock("stack")}<div class="word" data-pomo-word></div></div>`
+    : "";
+  return `<span class="lens prism" aria-hidden="true"></span>${items}${pomo}`;
+}
+
+// ------------------------------------------------------------------ focus timer
+
+const pomoOn = (state: AppState) => state.settings.pomodoroEnabled;
+
+/** One flip card: static halves plus two flaps that turn on each change. */
+const flipCard = (key: string) =>
+  `<span class="flip" data-flip="${key}"><span class="fl top"><b></b></span><span class="fl bot"><b></b></span><span class="fl flap-top"><b></b></span><span class="fl flap-bot"><b></b></span></span>`;
+
+/** Minutes and seconds as two flip cards. */
+function flipClock(kind: "stack" | "row" | "big"): string {
+  return `<span class="flipclock ${kind}" data-pomo-clock aria-hidden="true">${flipCard("mm")}${flipCard("ss")}</span>`;
+}
+
+const phaseName: Record<Pomodoro["phase"], string> = { focus: "Focus", break: "Short break", longBreak: "Long break" };
+
+function pomoCardHtml(state: AppState): string {
+  const rounds = Array.from({ length: state.pomodoro.rounds }, () => "<i></i>").join("");
+  return `<section class="card well pomo-card" data-pomo style="--i:0">
+    <header class="card-head">
+      <span class="pglyph">${icons.timer}</span>
+      <span class="pname">Focus timer</span>
+      <span class="fresh" data-pomo-phase></span>
+    </header>
+    <div class="pomo-clock">${flipClock("big")}</div>
+    <div class="pomo-foot">
+      <button class="orb" data-action="pomo-reset" aria-label="Restart">${icons.refresh}</button>
+      <div class="pomo-mid">
+        <button class="btn primary" data-action="pomo-toggle" data-pomo-toggle>Start</button>
+        <span class="dots pomo-rounds" data-pomo-rounds title="Focus rounds before a long break">${rounds}</span>
+      </div>
+      <button class="orb" data-action="pomo-skip" aria-label="Skip to next">${icons.skip}</button>
+    </div>
+  </section>`;
+}
+
+const flipTimers = new WeakMap<Element, number>();
+
+/** Show `value` on a flip card, turning the flaps when it changes. */
+function setFlip(card: HTMLElement, value: string) {
+  const old = card.dataset.v;
+  if (old === value) return;
+  card.dataset.v = value;
+  const [top, bot, flapTop, flapBot] = Array.from(card.querySelectorAll("b"));
+  const still = old === undefined || matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (still) {
+    for (const b of [top, bot, flapTop, flapBot]) b.textContent = value;
+    return;
+  }
+  top.textContent = value;
+  bot.textContent = old;
+  flapTop.textContent = old;
+  flapBot.textContent = value;
+  card.classList.remove("go");
+  void card.offsetWidth;
+  card.classList.add("go");
+  clearTimeout(flipTimers.get(card));
+  flipTimers.set(
+    card,
+    window.setTimeout(() => {
+      bot.textContent = card.dataset.v ?? value;
+      card.classList.remove("go");
+    }, 560),
+  );
+}
+
+export function pomoRemaining(t: Pomodoro): number {
+  return t.running && t.endsAt !== null ? Math.max(0, t.endsAt - Date.now()) : t.remainingMs;
+}
+
+/** Update every timer on screen. Cheap when nothing changed. */
+export function paintPomo(root: HTMLElement, state: AppState) {
+  const t = state.pomodoro;
+  if (!t || !state.settings.pomodoroEnabled) return;
+  const secs = Math.ceil(pomoRemaining(t) / 1000);
+  const mm = String(Math.floor(secs / 60)).padStart(2, "0");
+  const ss = String(secs % 60).padStart(2, "0");
+  const fresh = !t.running && t.remainingMs === t.totalMs;
+  const word = t.running ? (t.phase === "focus" ? "Focus" : "Break") : fresh ? (t.phase === "focus" ? "Ready" : "Break") : "Paused";
+  root.querySelectorAll<HTMLElement>("[data-pomo]").forEach((el) => {
+    el.dataset.run = t.running ? "1" : "0";
+    el.dataset.phase = t.phase;
+  });
+  root.querySelectorAll<HTMLElement>("[data-pomo-clock]").forEach((el) => {
+    const cards = el.querySelectorAll<HTMLElement>("[data-flip]");
+    setFlip(cards[0], mm);
+    setFlip(cards[1], ss);
+  });
+  root.querySelectorAll<HTMLElement>("[data-pomo-word]").forEach((el) => {
+    if (el.textContent !== word) el.textContent = word;
+  });
+  root.querySelectorAll<HTMLElement>("[data-pomo-phase]").forEach((el) => {
+    const text = `${phaseName[t.phase]}${!t.running && !fresh ? " · Paused" : ""}`;
+    if (el.textContent !== text) el.textContent = text;
+  });
+  root.querySelectorAll<HTMLElement>("[data-pomo-toggle]").forEach((el) => {
+    const text = t.running ? "Pause" : fresh ? "Start" : "Resume";
+    if (el.textContent !== text) el.textContent = text;
+  });
+  root.querySelectorAll<HTMLElement>("[data-pomo-rounds]").forEach((el) => {
+    // Finished rounds are solid; the one in progress is outlined.
+    const lit = t.done + (t.phase === "focus" && !fresh ? 1 : 0);
+    el.querySelectorAll("i").forEach((d, i) => {
+      d.classList.toggle("on", i < t.done);
+      d.classList.toggle("now", i >= t.done && i < lit);
+    });
+  });
+  const label = `${phaseName[t.phase]}: ${Math.floor(secs / 60)} min ${secs % 60} s left${t.running ? "" : " (paused)"}`;
+  root.querySelectorAll<HTMLElement>("[data-pomo]").forEach((el) => {
+    if (el.title !== label) el.title = label;
+  });
 }
 
 // ------------------------------------------------------------------ panel
@@ -245,10 +368,11 @@ function cardHtml(p: Provider, i: number): string {
 
 export function usageHtml(state: AppState): string {
   const providers = visibleProviders(state);
-  if (!providers.length) {
+  if (!providers.length && !pomoOn(state)) {
     return `<section class="card well state"><div class="state-body"><h3>No services turned on</h3><p>Turn on Claude or Codex in Settings.</p><button class="btn primary" data-action="settings">Open Settings</button></div></section>`;
   }
-  return providers.map(cardHtml).join("");
+  const timer = pomoOn(state) ? pomoCardHtml(state) : "";
+  return timer + providers.map((p, i) => cardHtml(p, i + (timer ? 1 : 0))).join("");
 }
 
 // ------------------------------------------------------------------ settings
@@ -299,6 +423,21 @@ export function settingsHtml(state: AppState): string {
       <div class="row sub-row">
         <input class="text" data-text="codexPath" placeholder="Codex path · auto-detect" value="${escapeHtml(s.codexPath ?? "")}" spellcheck="false"/>
       </div>
+    </div>
+
+    <h4>Focus timer</h4>
+    <div class="group well">
+      ${toggle("pomodoroEnabled", s.pomodoroEnabled, "Pomodoro", "Focus rounds with short breaks, and a long break after every 4")}
+      ${
+        s.pomodoroEnabled
+          ? `<div class="row"><span class="row-text"><span>Focus</span><small>Minutes</small></span>
+      ${segmented("focusMinutes", s.focusMinutes, [[15, "15"], [25, "25"], [45, "45"], [50, "50"]])}</div>
+      <div class="row"><span class="row-text"><span>Short break</span></span>
+      ${segmented("breakMinutes", s.breakMinutes, [[5, "5"], [10, "10"]])}</div>
+      <div class="row"><span class="row-text"><span>Long break</span></span>
+      ${segmented("longBreakMinutes", s.longBreakMinutes, [[15, "15"], [20, "20"], [30, "30"]])}</div>`
+          : ""
+      }
     </div>
 
     <h4>Alerts</h4>
@@ -474,6 +613,7 @@ export function paint(root: HTMLElement, state: AppState) {
     el.querySelectorAll("i").forEach((d, i) => d.classList.toggle("on", i < on));
     el.dataset.level = level(pct ?? 0);
   });
+  paintPomo(root, state);
   root.querySelectorAll<HTMLElement>("[data-level-of]").forEach((el) => {
     const p = usage[el.dataset.levelOf as Pid];
     const worst = Math.max(0, ...p.windows.filter((w) => !isReset(w)).map((w) => w.usedPercent));

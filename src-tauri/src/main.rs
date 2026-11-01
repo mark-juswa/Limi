@@ -7,6 +7,7 @@ mod claude_live;
 mod codex;
 mod model;
 mod paths;
+mod pomodoro;
 #[cfg(windows)]
 mod proc;
 mod settings;

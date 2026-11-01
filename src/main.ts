@@ -4,8 +4,8 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import "./styles.css";
 import logo from "./logo.png";
 import { ago, isReset } from "./format";
-import type { AppState, LayoutInfo, Settings, Usage } from "./types";
-import { icons, paint, railHtml, relaxHtml, settingsHtml, usageHtml, visibleProviders } from "./views";
+import type { AppState, LayoutInfo, Pomodoro, Settings, Usage } from "./types";
+import { icons, paint, paintPomo, railHtml, relaxHtml, settingsHtml, usageHtml, visibleProviders } from "./views";
 
 // Geometry (logical px). The widget sits flush on the screen edge; PAD is
 // transparent room for the shadow on the other three sides.
@@ -467,11 +467,13 @@ async function updateSettings(patch: Partial<Settings>) {
   state.settings = await invoke<Settings>("update_settings", { patch });
   applyTheme();
   const s = state.settings;
-  if (s.placement !== prev.placement || s.barStyle !== prev.barStyle) {
-    // New orientation: redraw the rail and resting gauge, then move the window.
+  if (s.placement !== prev.placement || s.barStyle !== prev.barStyle || s.pomodoroEnabled !== prev.pomodoroEnabled) {
+    // New orientation, or the timer shown/hidden: redraw the rail and
+    // resting gauge, then move the window.
     renderRail();
     paint(shell, state);
     if (view === "settings") renderView();
+    resizeExpanded();
     await layoutCompact();
   } else if (s.edge !== prev.edge) await layoutCompact();
 }
@@ -518,6 +520,13 @@ async function act(action: string, el: HTMLElement) {
       } catch {
         if (line) line.textContent = "Couldn't check for updates right now.";
       }
+      return;
+    }
+    case "pomo-toggle":
+    case "pomo-reset":
+    case "pomo-skip": {
+      state.pomodoro = await invoke<Pomodoro>("pomodoro", { action: action.slice(5) });
+      paintPomo(shell, state);
       return;
     }
     case "hide":
@@ -665,6 +674,11 @@ async function boot() {
     render();
   });
   await listen("open-settings", () => expand("settings"));
+  await listen<Pomodoro>("pomodoro", (e) => {
+    if (!state) return;
+    state.pomodoro = e.payload;
+    paintPomo(shell, state);
+  });
   // The cursor left the glass (the window stops getting mouse events then).
   await listen<boolean>("hover", (e) => {
     if (e.payload) wake();
@@ -675,6 +689,8 @@ async function boot() {
   });
   await reload();
   setInterval(tick, 1000);
+  // Check often so each flip lands on the second.
+  setInterval(() => state && paintPomo(shell, state), 200);
 }
 
 boot();

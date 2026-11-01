@@ -33,6 +33,7 @@ Click it and it springs open into a liquid-glass panel with session and weekly d
 - Light, dark, or Auto (follows Windows)
 - Monochrome by design: amber at 75% and red at 90% are the only colors, so a warning stands out
 - Windows notification when a limit crosses your chosen threshold (default 85%)
+- Optional Pomodoro focus timer (Settings › Focus timer): a flip clock in the rail, bar and panel; 25-minute focus rounds, 5-minute breaks and a long break after every 4, with a notification when each one ends
 - Lives in the tray, starts with Windows, around 35 MB of memory
 
 ## Install

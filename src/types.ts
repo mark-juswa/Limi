@@ -71,6 +71,24 @@ export interface Settings {
   edge: Edge;
   topRatio: number;
   monitor: string | null;
+  pomodoroEnabled: boolean;
+  focusMinutes: number;
+  breakMinutes: number;
+  longBreakMinutes: number;
+}
+
+export type Phase = "focus" | "break" | "longBreak";
+
+export interface Pomodoro {
+  phase: Phase;
+  running: boolean;
+  /** Epoch ms when the phase ends (while running). */
+  endsAt: number | null;
+  remainingMs: number;
+  totalMs: number;
+  /** Focus rounds finished in this cycle. */
+  done: number;
+  rounds: number;
 }
 
 export interface AppState {
@@ -79,6 +97,7 @@ export interface AppState {
   version: string;
   autostart: boolean;
   claudeStatusLine: boolean;
+  pomodoro: Pomodoro;
 }
 
 export interface LayoutInfo {

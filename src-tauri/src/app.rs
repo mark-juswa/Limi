@@ -70,6 +70,7 @@ struct StatePayload {
     autostart: bool,
     /// Usage is also shown in Claude Code's status line.
     claude_status_line: bool,
+    pomodoro: crate::pomodoro::Timer,
 }
 
 fn state(app: &AppHandle) -> &AppState {
@@ -445,6 +446,7 @@ fn get_state(app: AppHandle) -> StatePayload {
         version: env!("CARGO_PKG_VERSION"),
         autostart: app.autolaunch().is_enabled().unwrap_or(false),
         claude_status_line: status_line_connected(),
+        pomodoro: crate::pomodoro::current(&app),
     }
 }
 
@@ -499,6 +501,10 @@ struct SettingsPatch {
     theme: Option<Theme>,
     placement: Option<Placement>,
     bar_style: Option<BarStyle>,
+    pomodoro_enabled: Option<bool>,
+    focus_minutes: Option<u32>,
+    break_minutes: Option<u32>,
+    long_break_minutes: Option<u32>,
 }
 
 #[tauri::command]
@@ -524,6 +530,10 @@ fn update_settings(app: AppHandle, patch: SettingsPatch) -> Result<Settings, Str
         if let Some(v) = patch.theme { s.theme = v; }
         if let Some(v) = patch.placement { s.placement = v; }
         if let Some(v) = patch.bar_style { s.bar_style = v; }
+        if let Some(v) = patch.pomodoro_enabled { s.pomodoro_enabled = v; }
+        if let Some(v) = patch.focus_minutes { s.focus_minutes = v; }
+        if let Some(v) = patch.break_minutes { s.break_minutes = v; }
+        if let Some(v) = patch.long_break_minutes { s.long_break_minutes = v; }
         *s = s.clone().sanitized();
         s.save().map_err(|e| e.to_string())?;
         let after = (s.codex_enabled, s.codex_path.clone(), s.poll_seconds);
@@ -532,6 +542,7 @@ fn update_settings(app: AppHandle, patch: SettingsPatch) -> Result<Settings, Str
     if let Some(w) = app.get_webview_window("main") {
         let _ = w.set_always_on_top(updated.always_on_top);
     }
+    crate::pomodoro::configure(&app, &updated);
     if codex_changed {
         send(&state(&app).codex_tx, Msg::Reconfigure);
     }
@@ -683,6 +694,7 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
+        .manage(crate::pomodoro::init(&settings))
         .manage(AppState {
             claude: Mutex::new(claude::merge(settings.claude_enabled, None, None)),
             claude_live: Mutex::new(load_reading()),
@@ -707,7 +719,8 @@ pub fn run() {
             check_update,
             install_update,
             hide_widget,
-            quit
+            quit,
+            crate::pomodoro::pomodoro
         ])
         .setup(move |app| {
             let handle = app.handle().clone();
@@ -725,6 +738,7 @@ pub fn run() {
             *state(&handle).codex_tx.lock().unwrap() = Some(codex::spawn(handle.clone()));
             *state(&handle).claude_tx.lock().unwrap() = Some(spawn_claude_live(handle.clone()));
             spawn_record_watcher(handle.clone());
+            crate::pomodoro::spawn(handle.clone());
             spawn_token_scanner(handle);
             Ok(())
         })
