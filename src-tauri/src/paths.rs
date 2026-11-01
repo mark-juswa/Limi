@@ -28,6 +28,11 @@ pub fn settings_file() -> PathBuf {
     data_dir().join("settings.json")
 }
 
+/// Last good live Claude reading, kept across restarts.
+pub fn claude_last_file() -> PathBuf {
+    data_dir().join("claude-last.json")
+}
+
 /// Usage numbers captured from Claude Code's status line.
 pub fn claude_usage_file() -> PathBuf {
     data_dir().join("claude-usage.json")

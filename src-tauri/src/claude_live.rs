@@ -24,6 +24,9 @@ pub enum Fetch {
     /// `fresh` is false when Claude Code answered from its cached copy because
     /// the usage service refused the request (it rate-limits frequent checks).
     Ok { windows: Vec<UsageWindow>, plan: Option<String>, fresh: bool },
+    /// The usage service is rate-limiting this account and Claude Code had no
+    /// recent copy to fall back on. Temporary; retry later.
+    Busy,
     /// Signed in without a Pro/Max plan (e.g. API key): no plan limits exist.
     NoLimits,
     SignedOut,
@@ -102,7 +105,9 @@ pub fn parse(resp: &Value) -> Fetch {
         return Fetch::NoLimits;
     }
     let Some(rl) = resp.get("rate_limits").filter(|v| v.is_object()) else {
-        return Fetch::Failed("Claude Code didn't return plan limits.".into());
+        // Limits exist for this plan but none came back: the service refused
+        // the check (HTTP 429) and Claude Code's cached copy was too old.
+        return Fetch::Busy;
     };
 
     // A fresh answer carries the `limits` list; Claude Code drops it when it
@@ -274,5 +279,7 @@ mod tests {
         assert!(!fresh);
         assert_eq!((windows[0].used_percent, windows[0].resets_at), (12.0, None));
         assert_eq!(parse(&json!({ "rate_limits_available": false })), Fetch::NoLimits);
+        // Captured while rate-limited: plan has limits, but none returned.
+        assert_eq!(parse(&json!({ "subscription_type": "pro", "rate_limits_available": true, "rate_limits": null })), Fetch::Busy);
     }
 }

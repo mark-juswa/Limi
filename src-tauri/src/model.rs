@@ -1,9 +1,9 @@
 //! Data sent to the widget UI. Every number here comes from a provider;
 //! nothing is estimated or invented.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Serialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct UsageWindow {
     /// Stable id, e.g. "session" or "weekly".

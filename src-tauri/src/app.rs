@@ -206,6 +206,49 @@ fn refresh_claude(app: &AppHandle) {
     publish(app, claude::merge(s.claude_enabled, live, record));
 }
 
+/// The last good reading, saved so Limi has numbers to show right after a
+/// restart even if Claude's usage service is busy.
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SavedReading {
+    windows: Vec<crate::model::UsageWindow>,
+    plan: Option<String>,
+    captured_at: i64,
+}
+
+fn save_reading(snap: &ProviderSnapshot) {
+    let (Status::Ok, Some(captured_at)) = (snap.status, snap.captured_at) else { return };
+    if snap.windows.is_empty() {
+        return;
+    }
+    let saved = SavedReading { windows: snap.windows.clone(), plan: snap.plan.clone(), captured_at };
+    if let Ok(bytes) = serde_json::to_vec(&saved) {
+        let _ = paths::write_atomic(&paths::claude_last_file(), &bytes);
+    }
+}
+
+fn load_reading() -> Option<ProviderSnapshot> {
+    let saved: SavedReading = serde_json::from_slice(&std::fs::read(paths::claude_last_file()).ok()?).ok()?;
+    Some(ProviderSnapshot {
+        status: Status::Ok,
+        windows: saved.windows,
+        plan: saved.plan,
+        captured_at: Some(saved.captured_at),
+        live: false,
+        ..ProviderSnapshot::new("claude", "Claude", claude_live::SOURCE, true)
+    })
+}
+
+/// Keep showing the last numbers (their age is shown) instead of an error.
+fn keep_previous(previous: Option<ProviderSnapshot>) -> Option<ProviderSnapshot> {
+    previous.filter(|p| !p.windows.is_empty()).map(|mut p| {
+        p.status = Status::Ok;
+        p.message = None;
+        p.live = false;
+        p
+    })
+}
+
 fn live_snapshot(fetch: Fetch, previous: Option<ProviderSnapshot>) -> ProviderSnapshot {
     let base = ProviderSnapshot::new("claude", "Claude", claude_live::SOURCE, true);
     match fetch {
@@ -240,15 +283,14 @@ fn live_snapshot(fetch: Fetch, previous: Option<ProviderSnapshot>) -> ProviderSn
             Status::SignedOut,
             "Claude Code isn't signed in. Run `claude` and use /login.".to_string(),
         ),
-        // Keep the last numbers on screen and flag the problem.
-        Fetch::Failed(msg) => match previous.filter(|p| !p.windows.is_empty()) {
-            Some(mut p) => {
-                p.status = Status::Error;
-                p.message = Some(msg);
-                p
-            }
-            None => base.with_status(Status::Error, msg),
-        },
+        // Temporary: keep the last numbers, or explain the wait.
+        Fetch::Busy => keep_previous(previous).unwrap_or_else(|| {
+            base.with_status(
+                Status::Waiting,
+                "Claude's usage service is busy right now. Limi will try again shortly; a reply in the Claude Code CLI also updates it.".to_string(),
+            )
+        }),
+        Fetch::Failed(msg) => keep_previous(previous).unwrap_or_else(|| base.with_status(Status::Error, msg)),
     }
 }
 
@@ -256,19 +298,30 @@ fn live_snapshot(fetch: Fetch, previous: Option<ProviderSnapshot>) -> ProviderSn
 fn spawn_claude_live(app: AppHandle) -> UnboundedSender<Msg> {
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<Msg>();
     tauri::async_runtime::spawn(async move {
+        let mut busy_strikes: u32 = 0;
         loop {
             let s = settings(&app);
             let mut gap = CLAUDE_MIN_GAP;
+            let mut busy_wait = CLAUDE_INTERVAL;
             if s.claude_enabled {
                 let snap = match claude_live::resolve(s.claude_path.as_deref()) {
                     Some(exe) => {
                         let previous = state(&app).claude_live.lock().unwrap().clone();
                         let fetch = claude_live::fetch(&exe).await;
-                        if matches!(fetch, Fetch::Ok { fresh: false, .. }) {
+                        match fetch {
                             // Refused: give the service its full cool-down.
-                            gap = CLAUDE_INTERVAL;
+                            Fetch::Ok { fresh: false, .. } => gap = CLAUDE_INTERVAL,
+                            // Refused with a long hold: back off further each time.
+                            Fetch::Busy => {
+                                busy_strikes = (busy_strikes + 1).min(3);
+                                busy_wait = CLAUDE_INTERVAL * (1 << busy_strikes);
+                                gap = busy_wait;
+                            }
+                            _ => busy_strikes = 0,
                         }
-                        live_snapshot(fetch, previous)
+                        let snap = live_snapshot(fetch, previous);
+                        save_reading(&snap);
+                        snap
                     }
                     None => ProviderSnapshot::new("claude", "Claude", claude_live::SOURCE, true).with_status(
                         Status::NotInstalled,
@@ -287,7 +340,7 @@ fn spawn_claude_live(app: AppHandle) -> UnboundedSender<Msg> {
             if pending {
                 continue;
             }
-            let wait = Duration::from_secs(s.poll_seconds).max(CLAUDE_INTERVAL).saturating_sub(gap);
+            let wait = Duration::from_secs(s.poll_seconds).max(CLAUDE_INTERVAL).max(busy_wait).saturating_sub(gap);
             tokio::select! {
                 m = rx.recv() => if m.is_none() { return },
                 _ = tokio::time::sleep(wait) => {}
@@ -632,7 +685,7 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .manage(AppState {
             claude: Mutex::new(claude::merge(settings.claude_enabled, None, None)),
-            claude_live: Mutex::new(None),
+            claude_live: Mutex::new(load_reading()),
             claude_tx: Mutex::new(None),
             codex: Mutex::new(ProviderSnapshot::new("codex", "Codex", codex::SOURCE, true)),
             settings: Mutex::new(settings.clone()),
