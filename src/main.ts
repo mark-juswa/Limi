@@ -472,7 +472,7 @@ async function updateSettings(patch: Partial<Settings>) {
     // resting gauge, then move the window.
     renderRail();
     paint(shell, state);
-    if (view === "settings") renderView();
+    renderView();
     resizeExpanded();
     await layoutCompact();
   } else if (s.edge !== prev.edge) await layoutCompact();
@@ -522,6 +522,15 @@ async function act(action: string, el: HTMLElement) {
       }
       return;
     }
+    case "pomo-enable": {
+      // One click from the panel: show the timer and start the first round.
+      await updateSettings({ pomodoroEnabled: true });
+      state.pomodoro = await invoke<Pomodoro>("pomodoro", { action: "toggle" });
+      paintPomo(shell, state);
+      return;
+    }
+    case "pomo-disable":
+      return updateSettings({ pomodoroEnabled: false });
     case "pomo-toggle":
     case "pomo-reset":
     case "pomo-skip": {

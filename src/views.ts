@@ -32,6 +32,7 @@ export const icons = {
   moon: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z" fill="currentColor"/></svg>`,
   cloud: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7.5 18.5h9.2a3.8 3.8 0 0 0 .6-7.55A5.6 5.6 0 0 0 6.6 10.6a4 4 0 0 0 .9 7.9z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>`,
   timer: `<svg viewBox="0 0 24 24" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13.5" r="7.5"/><path d="M12 13.5V9.5M9.5 2.5h5M18.5 6l1.3-1.3"/></g></svg>`,
+  close: `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7l10 10M17 7L7 17" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round"/></svg>`,
   skip: `<svg viewBox="0 0 24 24" aria-hidden="true"><g fill="currentColor"><path d="M5.5 6.2v11.6c0 .8.9 1.3 1.6.8l8.2-5.8a1 1 0 0 0 0-1.6L7.1 5.4c-.7-.5-1.6 0-1.6.8z"/><rect x="16.6" y="5.5" width="2.6" height="13" rx="1.3"/></g></svg>`,
   auto: `<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 4a8 8 0 0 1 0 16z" fill="currentColor"/></svg>`,
 };
@@ -204,6 +205,7 @@ function pomoCardHtml(state: AppState): string {
       <span class="pglyph">${icons.timer}</span>
       <span class="pname">Focus timer</span>
       <span class="fresh" data-pomo-phase></span>
+      <button class="orb mini" data-action="pomo-disable" aria-label="Turn off the focus timer" title="Turn off">${icons.close}</button>
     </header>
     <div class="pomo-clock">${flipClock("big")}</div>
     <div class="pomo-foot">
@@ -214,6 +216,16 @@ function pomoCardHtml(state: AppState): string {
       </div>
       <button class="orb" data-action="pomo-skip" aria-label="Skip to next">${icons.skip}</button>
     </div>
+  </section>`;
+}
+
+/** Shown while the timer is off, so it's one click to start. */
+function pomoPromoHtml(state: AppState): string {
+  const s = state.settings;
+  return `<section class="card well pomo-promo" style="--i:0">
+    <span class="promo-icon">${icons.timer}</span>
+    <span class="row-text"><span>Focus timer</span><small>Pomodoro · ${s.focusMinutes} min focus, ${s.breakMinutes} min breaks</small></span>
+    <button class="btn primary small" data-action="pomo-enable">Start</button>
   </section>`;
 }
 
@@ -368,11 +380,11 @@ function cardHtml(p: Provider, i: number): string {
 
 export function usageHtml(state: AppState): string {
   const providers = visibleProviders(state);
-  if (!providers.length && !pomoOn(state)) {
+  if (!providers.length) {
     return `<section class="card well state"><div class="state-body"><h3>No services turned on</h3><p>Turn on Claude or Codex in Settings.</p><button class="btn primary" data-action="settings">Open Settings</button></div></section>`;
   }
-  const timer = pomoOn(state) ? pomoCardHtml(state) : "";
-  return timer + providers.map((p, i) => cardHtml(p, i + (timer ? 1 : 0))).join("");
+  const timer = pomoOn(state) ? pomoCardHtml(state) : pomoPromoHtml(state);
+  return timer + providers.map((p, i) => cardHtml(p, i + 1)).join("");
 }
 
 // ------------------------------------------------------------------ settings

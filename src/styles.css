@@ -1494,3 +1494,37 @@ code {
   background: transparent;
   box-shadow: inset 0 0 0 1.5px var(--ink);
 }
+
+/* timer off: a one-click invitation at the top of the panel */
+.pomo-promo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 12px 12px 14px;
+}
+.pomo-promo .row-text {
+  flex: 1;
+}
+.promo-icon {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 11px;
+  color: var(--flip-fg);
+  background: linear-gradient(180deg, var(--flip-bg-top), var(--flip-bg-bot));
+  box-shadow: 0 4px 10px -5px rgba(0, 0, 0, 0.55);
+}
+.promo-icon svg {
+  width: 19px;
+  height: 19px;
+}
+.orb.mini {
+  width: 26px;
+  height: 26px;
+  margin-left: 4px;
+}
+.orb.mini svg {
+  width: 12px;
+  height: 12px;
+}
